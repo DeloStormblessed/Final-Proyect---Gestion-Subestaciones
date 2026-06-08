@@ -1,7 +1,8 @@
 # Variables de entorno (secretos, no subir nunca a git)
+# .env.production y .env.development también contienen secretos reales
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Dependencias de Node
 node_modules/
@@ -44,6 +45,23 @@ coverage/
 .claude/worktrees/heuristic-cartwright-2030ec
 docs/
 CLAUDE.md
+
+# Certificados y claves privadas
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Directorios de plataformas de deploy
+.vercel/
+.railway/
+
+# Build del frontend (Vercel/Railway construyen desde el código fuente)
+frontend/dist/
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
 
 #GENERAL
 readme-reunion.md

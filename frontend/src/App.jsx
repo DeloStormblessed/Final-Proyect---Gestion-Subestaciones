@@ -1,0 +1,30 @@
+import { Routes, Route, Navigate } from 'react-router-dom';
+import RutaProtegida from './components/RutaProtegida.jsx';
+import Layout from './components/Layout.jsx';
+import Login from './pages/Login.jsx';
+import Registro from './pages/Registro.jsx';
+import Dashboard from './pages/Dashboard.jsx';
+import Activos from './pages/Activos.jsx';
+import ActivoDetalle from './pages/ActivoDetalle.jsx';
+import Chat from './pages/Chat.jsx';
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login"    element={<Login />} />
+      <Route path="/registro" element={<Registro />} />
+
+      {/* Rutas autenticadas: primero valida token, luego aplica Layout */}
+      <Route element={<RutaProtegida />}>
+        <Route element={<Layout />}>
+          <Route path="/dashboard"  element={<Dashboard />} />
+          <Route path="/activos"    element={<Activos />} />
+          <Route path="/activos/:id" element={<ActivoDetalle />} />
+          <Route path="/chat"       element={<Chat />} />
+        </Route>
+      </Route>
+
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  );
+}
