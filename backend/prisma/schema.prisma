@@ -1,0 +1,183 @@
+// backend/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Enums
+// ============================================================
+
+enum Rol {
+  OPERARIO
+  TECNICO
+  ADMIN
+}
+
+enum EstadoActivo {
+  EN_SERVICIO
+  AVERIADO
+  // FUERA_DE_SERVICIO: equivalente a "en descargo" en jerga del sector eléctrico
+  // (procedimiento formal de retirar un equipo con consignación y puesta a tierra).
+  // Se mantiene el término genérico GMAO por claridad para no-eléctricos.
+  FUERA_DE_SERVICIO
+  // DADO_DE_BAJA: equivale al "borrado" para un Activo (no hay DELETE en la API).
+  // Preserva el histórico de OTs asociadas.
+  DADO_DE_BAJA
+}
+
+// Tipos de activo del proyecto. La codificación de los `Activo.codigo` (campo del modelo)
+// sigue la norma IEC 81346-2 (designación de referencia) con un ajuste pragmático
+// para el transformador de medida. Detalle en seed.js y README.
+enum TipoActivo {
+  TRANSFORMADOR_POTENCIA
+  INTERRUPTOR_AUTOMATICO
+  SECCIONADOR
+  // PARARRAYOS: técnicamente "descargador de sobretensión" según UNE-EN 60099.
+  // Se mantiene "pararrayos" por ser el término más reconocible y aceptado por la norma.
+  PARARRAYOS
+  TRANSFORMADOR_MEDIDA
+  BATERIA_CONDENSADORES
+}
+
+// Tipos de orden de trabajo. INSPECCION, PREVENTIVO y CORRECTIVO siguen la
+// terminología de la norma UNE-EN 13306 (Terminología del mantenimiento).
+// INSTALACION y BAJA son operaciones de ciclo de vida del activo (no mantenimiento estricto),
+// pero se modelan como OT para mantener trazabilidad histórica unificada.
+enum TipoOrdenTrabajo {
+  INSPECCION
+  PREVENTIVO
+  CORRECTIVO
+  INSTALACION
+  BAJA
+}
+
+// Resultado de una inspección según UNE-EN 13306 §4.4 (Conformidad).
+// CONFORME    = el activo cumple las condiciones requeridas tras la inspección.
+// NO_CONFORME = se ha detectado avería o desviación. Dispara webhook (lib/webhook.js)
+//               y transición a AVERIADO en la Regla A (lib/transiciones.js).
+enum ResultadoInspeccion {
+  CONFORME
+  NO_CONFORME
+}
+
+// ============================================================
+// Modelos
+// ============================================================
+
+model Usuario {
+  id            String    @id @default(cuid())   // cuid: evita enumeración de recursos en URLs públicas
+  email         String    @unique
+  passwordHash  String                            // nombre explícito (no "password") para no devolverlo por accidente en selects sin filtrar
+  nombre        String
+  rol           Rol       @default(OPERARIO)
+  activo        Boolean   @default(true)          // soft delete: borrar rompería el histórico de OTs firmadas por este usuario
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  ordenesTrabajo OrdenTrabajo[] @relation("AutorOT")
+
+  @@index([email])
+  @@map("usuarios")                               // nombre de tabla en snake_case plural; convención SQL más estándar que el PascalCase singular por defecto
+}
+
+model Subestacion {
+  id              String    @id @default(cuid())
+  codigo          String    @unique               // identificador funcional (p.ej. "SE-MAD-001")
+  nombre          String
+  ubicacion       String
+  tensionNominal  Int                             // en kV
+  activa          Boolean   @default(true)        // soft delete; antes de desactivar hay que dar de baja los activos asociados
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  activos         Activo[]
+
+  @@index([codigo])
+  @@map("subestaciones")
+}
+
+model Activo {
+  id                      String        @id @default(cuid())
+  codigo                  String        @unique  // identificador funcional del activo en planta
+  tipo                    TipoActivo
+  fabricante              String
+  modelo                  String?
+  numeroSerie             String?       @unique
+  fechaPuestaEnServicio   DateTime
+  estado                  EstadoActivo  @default(EN_SERVICIO)
+
+  // Se almacena (no se calcula al vuelo) porque se consulta mucho:
+  // Regla B (bloqueo de PREVENTIVO si está vencida), dashboard, filtro ?inspeccionVencida=true.
+  // Se recalcula al registrar una INSPECCION con resultado OK,
+  // usando el intervalo de lib/intervalos-inspeccion.js según el TipoActivo.
+  fechaProximaInspeccion  DateTime
+
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  subestacionId           String
+  // onDelete: Restrict en TODAS las relaciones del schema. Protege la integridad del histórico:
+  // no se puede borrar una subestación si tiene activos colgando.
+  subestacion             Subestacion   @relation(fields: [subestacionId], references: [id], onDelete: Restrict)
+
+  ordenesTrabajo          OrdenTrabajo[]
+  etiquetas               Etiqueta[]    @relation("ActivosEtiquetas")
+
+  @@index([subestacionId])
+  @@index([estado])
+  @@index([fechaProximaInspeccion])     // crítico para el filtro de inspecciones vencidas (Regla B + dashboard)
+  @@index([tipo])
+  @@map("activos")
+}
+
+// OT INMUTABLE: no tiene updatedAt, no habrá endpoint PUT ni DELETE.
+// El histórico de mantenimiento tiene valor legal/auditable (firmado por un autor, en una fecha).
+// Si una OT está mal, se anula registrando otra OT que la corrija. Nunca se reescribe.
+model OrdenTrabajo {
+  id                String                @id @default(cuid())
+  tipo              TipoOrdenTrabajo
+  descripcion       String
+  resultado         ResultadoInspeccion?  // opcional: solo se rellena cuando tipo = INSPECCION
+
+  // Snapshot del estado del activo antes y después de aplicar la OT.
+  // Permite reconstruir el histórico aunque la matriz de transiciones cambie en el futuro:
+  // la OT antigua sigue siendo consultable y autosuficiente sin volver a ejecutar la lógica.
+  estadoAnterior    EstadoActivo
+  estadoNuevo       EstadoActivo
+
+  // Separada de createdAt: la fecha real del trabajo en campo puede no coincidir
+  // con la fecha de registro en sistema (técnico que sube los partes por la tarde, etc.).
+  fechaIntervencion DateTime              @default(now())
+  createdAt         DateTime              @default(now())
+
+  activoId          String
+  activo            Activo                @relation(fields: [activoId], references: [id], onDelete: Restrict)
+  autorId           String
+  autor             Usuario               @relation("AutorOT", fields: [autorId], references: [id], onDelete: Restrict)
+
+  // Índice compuesto para la consulta más frecuente: historial de un activo ordenado por fecha desc.
+  @@index([activoId, createdAt])
+  @@index([tipo])
+  @@index([autorId])
+  @@map("ordenes_trabajo")
+}
+
+// Único modelo con Int autoincrement: en el scope §4 se clasifica como entidad "interna"
+// (metadato sin valor histórico). El campo `color` es anticipación para el frontend futuro,
+// coste cero ahora.
+model Etiqueta {
+  id        Int       @id @default(autoincrement())
+  nombre    String    @unique
+  color     String?
+  createdAt DateTime  @default(now())
+
+  activos   Activo[]  @relation("ActivosEtiquetas")
+
+  @@map("etiquetas")
+}
