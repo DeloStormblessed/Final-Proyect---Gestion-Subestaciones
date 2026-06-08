@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { Eye } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../lib/apiNode.js';
 import EstadoBadge from '../components/EstadoBadge.jsx';
+
+const C = { primario: '#A4C63A', gris: '#9AA0A6' };
 
 const ESTADOS_ACTIVO = ['EN_SERVICIO', 'AVERIADO', 'FUERA_DE_SERVICIO', 'DADO_DE_BAJA'];
 const TIPOS_ACTIVO = [
@@ -139,6 +142,7 @@ export default function Activos() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [mostrarModal, setMostrarModal] = useState(false);
+  const [hoveredRow, setHoveredRow] = useState(null);
 
   // Filtros
   const [estado, setEstado] = useState('');
@@ -233,24 +237,55 @@ export default function Activos() {
                   <th style={estilos.th}>Código</th>
                   <th style={estilos.th}>Tipo</th>
                   <th style={estilos.th}>Fabricante</th>
-                  <th style={estilos.th}>Subestación</th>
+                  <th style={estilos.th} className="col-secundaria">Subestación</th>
                   <th style={estilos.th}>Estado</th>
-                  <th style={estilos.th}>Próx. inspección</th>
+                  <th style={estilos.th} className="col-secundaria">Próx. inspección</th>
+                  <th style={estilos.th}></th>
                 </tr>
               </thead>
               <tbody>
-                {activos.map(activo => (
-                  <tr key={activo.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                    <td style={estilos.td}>
-                      <Link to={`/activos/${activo.id}`} style={{ color: 'var(--color-primario)', fontWeight: 600 }}>
-                        {activo.codigo}
-                      </Link>
-                    </td>
+                {activos.map((activo, idx) => (
+                  <tr
+                    key={activo.id}
+                    onMouseEnter={() => setHoveredRow(activo.id)}
+                    onMouseLeave={() => setHoveredRow(null)}
+                    style={{
+                      background: hoveredRow === activo.id ? '#F0F0F0' : idx % 2 === 0 ? '#fff' : '#F9F9F9',
+                      transition: 'background 0.1s',
+                    }}
+                  >
+                    {/* Código es el dato principal — weight 600 para que el ojo lo encuentre primero */}
+                    <td style={{ ...estilos.td, fontWeight: 600, color: '#1A1A1A' }}>{activo.codigo}</td>
                     <td style={estilos.td}>{ETIQUETA_TIPO[activo.tipo] ?? activo.tipo}</td>
                     <td style={estilos.td}>{activo.fabricante}</td>
-                    <td style={estilos.td}>{activo.subestacion?.nombre ?? '—'}</td>
+                    {/* Subestación y fecha son contexto secundario — gris para no competir con Código */}
+                    <td style={{ ...estilos.td, color: C.gris }} className="col-secundaria">{activo.subestacion?.nombre ?? '—'}</td>
                     <td style={estilos.td}><EstadoBadge estado={activo.estado} /></td>
-                    <td style={estilos.td}>{formatFecha(activo.fechaProximaInspeccion)}</td>
+                    <td style={{ ...estilos.td, color: C.gris }} className="col-secundaria">{formatFecha(activo.fechaProximaInspeccion)}</td>
+                    <td style={{ ...estilos.td, textAlign: 'right' }}>
+                      <Link
+                        to={`/activos/${activo.id}`}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                          padding: '0.25rem 0.65rem', borderRadius: 999,
+                          fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap',
+                          background: 'rgba(164,198,58,0.12)', color: C.primario,
+                          border: `2px solid ${C.primario}`,
+                          outline: 'none', transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.background = C.primario;
+                          e.currentTarget.style.color = '#fff';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.background = 'rgba(164,198,58,0.12)';
+                          e.currentTarget.style.color = C.primario;
+                        }}
+                      >
+                        <Eye size={13} />
+                        Ver activo
+                      </Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -282,9 +317,9 @@ export default function Activos() {
 }
 
 const estilos = {
-  tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' },
-  th: { textAlign: 'left', padding: '0.75rem 1rem', fontWeight: 600, color: '#777', fontSize: '0.75rem', textTransform: 'uppercase', borderBottom: '2px solid #f0f0f0' },
-  td: { padding: '0.75rem 1rem', verticalAlign: 'middle' },
+  tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' },
+  th: { textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#1A1A1A', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', background: '#F5F5F5', borderBottom: '1px solid #E8E8E8' },
+  td: { padding: '0.875rem 0.75rem', verticalAlign: 'middle', textAlign: 'left' },
 };
 
 const estilosFiltro = {

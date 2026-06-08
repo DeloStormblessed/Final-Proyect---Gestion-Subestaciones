@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { Eye } from 'lucide-react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
   LineChart, Line, XAxis, CartesianGrid,
@@ -162,6 +164,7 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   // null = mostrar último punto por defecto; se actualiza con el hover
   const [activeIdx, setActiveIdx] = useState(null);
+  const [hoveredRow, setHoveredRow] = useState(null);
 
   useEffect(() => {
     const semanas = ultimasSemanas(6);
@@ -193,6 +196,8 @@ export default function Dashboard() {
 
   const { activosPorEstado, inspeccionesVencidas, topInspeccionesAtrasadas, otsUltimos30DiasPorTipo, ultimasOrdenesTrabajo } = datos;
   const totalActivos = Object.values(activosPorEstado).reduce((s, v) => s + v, 0);
+  // suma de otsUltimos30DiasPorTipo: mismo dato que agrega el donut, sin cálculo nuevo de dominio
+  const totalOTs30dias = Object.values(otsUltimos30DiasPorTipo).reduce((s, v) => s + v, 0);
 
   const donutEstado = Object.entries(activosPorEstado)
     .filter(([, v]) => v > 0)
@@ -209,22 +214,24 @@ export default function Dashboard() {
 
 
       {/* ── KPI cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+      {/* auto-fit colapsa a 2 columnas en tablet y a 1 en móvil sin media queries */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
         <KpiCard titulo="Activos totales"  valor={totalActivos}                 color={C.nav} />
         <KpiCard titulo="En servicio"      valor={activosPorEstado.EN_SERVICIO} color={C.primario} valorArriba />
         <KpiCard titulo="Averiados"        valor={activosPorEstado.AVERIADO}    color={C.rojo}    valorArriba />
         <KpiCard titulo="Insp. vencidas"   valor={inspeccionesVencidas}         color={C.ambar}   valorArriba />
+        <KpiCard titulo="OTs (30 días)"    valor={totalOTs30dias}               color={C.violeta} valorArriba />
       </div>
 
-      {/* ── Gráfico de líneas + donuts ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', alignItems: 'stretch' }}>
+      {/* ── Gráfico de líneas + columna derecha ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem', alignItems: 'stretch' }}>
 
         {/* Gráfico de líneas: atraso de mantenimiento (acumulado semanal) */}
         {(() => {
           // Punto activo: hover actualiza activeIdx; por defecto muestra el último dato
           const punto = serieOTs[activeIdx ?? serieOTs.length - 1];
           return (
-            <div style={{ ...s.card, gridColumn: 'span 2', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ ...s.card, display: 'flex', flexDirection: 'column' }}>
               {/* Título + leyenda con valores integrados en una sola línea */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                 <p style={{ ...s.cardTitle, marginBottom: 0 }}>Atraso de mantenimiento</p>
@@ -277,65 +284,35 @@ export default function Dashboard() {
           );
         })()}
 
-        {/* Donuts apilados — la columna estira para igualar la altura del gráfico */}
-        <div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
-          <div style={{ ...s.card, flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <p style={s.cardTitle}>Activos por estado</p>
-            {donutEstado.length === 0 ? <Empty /> : (
-              <DonutConLeyenda
-                datos={donutEstado}
-                colorKey="estado"
-                colorMap={COLOR_ESTADO}
-              />
-            )}
+        {/* Columna derecha: donuts en fila + top atrasadas debajo */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', gap: '1rem', flex: 1 }}>
+            <div style={{ ...s.card, flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <p style={s.cardTitle}>Activos por estado</p>
+              {donutEstado.length === 0 ? <Empty /> : (
+                <DonutConLeyenda
+                  datos={donutEstado}
+                  colorKey="estado"
+                  colorMap={COLOR_ESTADO}
+                />
+              )}
+            </div>
+
+            <div style={{ ...s.card, flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <p style={s.cardTitle}>OTs por tipo (30 días)</p>
+              {donutTipo.length === 0 ? <Empty /> : (
+                <DonutConLeyenda
+                  datos={donutTipo}
+                  colorKey="tipo"
+                  colorMap={COLOR_TIPO}
+                />
+              )}
+            </div>
           </div>
 
-          <div style={{ ...s.card, flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <p style={s.cardTitle}>OTs por tipo (30 días)</p>
-            {donutTipo.length === 0 ? <Empty /> : (
-              <DonutConLeyenda
-                datos={donutTipo}
-                colorKey="tipo"
-                colorMap={COLOR_TIPO}
-              />
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Fila inferior: estado del parque + últimas OTs ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem' }}>
-
-        {/* Estado del parque con barra de progreso */}
-        <div style={s.card}>
-          <p style={s.cardTitle}>Estado del parque</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '0.25rem' }}>
-            {Object.entries(activosPorEstado).map(([estado, total]) => (
-              <div key={estado}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: COLOR_ESTADO[estado] ?? C.gris }} />
-                    <span style={{ fontSize: '0.88rem', color: '#1A1A1A' }}>{LABEL_ESTADO[estado]}</span>
-                  </div>
-                  <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1A1A1A' }}>{total}</span>
-                </div>
-                <div style={{ height: 5, borderRadius: 3, background: '#f0f0f0' }}>
-                  <div style={{
-                    width: `${totalActivos ? (total / totalActivos) * 100 : 0}%`,
-                    height: '100%',
-                    borderRadius: 3,
-                    background: COLOR_ESTADO[estado] ?? C.gris,
-                    transition: 'width 0.6s ease',
-                  }} />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Inspecciones atrasadas */}
-          {topInspeccionesAtrasadas.length > 0 && (
-            <>
-              <p style={{ ...s.cardTitle, marginTop: '1.5rem' }}>Top inspecciones atrasadas</p>
+          <div style={s.card}>
+            <p style={s.cardTitle}>Top inspecciones atrasadas</p>
+            {topInspeccionesAtrasadas.length === 0 ? <Empty texto="Sin atrasos" /> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                 {topInspeccionesAtrasadas.slice(0, 4).map(a => (
                   <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', padding: '0.3rem 0', borderBottom: '1px solid #f5f5f5' }}>
@@ -344,9 +321,13 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-            </>
-          )}
+            )}
+          </div>
         </div>
+      </div>
+
+      {/* ── Fila inferior: últimas OTs a ancho completo ── */}
+      <div>
 
         {/* Últimas OTs */}
         <div style={s.card}>
@@ -361,20 +342,60 @@ export default function Dashboard() {
                       <th style={s.th}>Tipo</th>
                       <th style={s.th}>Activo</th>
                       <th style={s.th}>Resultado</th>
-                      <th style={s.th}>Fecha</th>
-                      <th style={s.th}>Técnico</th>
+                      {/* col-secundaria: se oculta en móvil (≤640px) para dar espacio a las columnas principales */}
+                      <th style={s.th} className="col-secundaria">Fecha</th>
+                      <th style={s.th} className="col-secundaria">Técnico</th>
+                      <th style={{ ...s.th, width: '130px' }}></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {ultimasOrdenesTrabajo.map(ot => (
-                      <tr key={ot.id} style={{ borderBottom: '1px solid #f5f5f5' }}>
+                    {ultimasOrdenesTrabajo.map((ot, idx) => (
+                      <tr
+                        key={ot.id}
+                        onMouseEnter={() => setHoveredRow(ot.id)}
+                        onMouseLeave={() => setHoveredRow(null)}
+                        style={{
+                          background: hoveredRow === ot.id ? '#F0F0F0' : idx % 2 === 0 ? '#fff' : '#F9F9F9',
+                          transition: 'background 0.1s',
+                        }}
+                      >
                         <td style={s.td}><TipoBadge tipo={ot.tipo} /></td>
-                        <td style={{ ...s.td, fontWeight: 600 }}>{ot.activo?.codigo ?? '—'}</td>
+                        {/* Activo es el dato principal — weight 600 para que el ojo lo encuentre primero */}
+                        <td style={{ ...s.td, fontWeight: 600, color: '#1A1A1A' }}>{ot.activo?.codigo ?? '—'}</td>
                         <td style={{ ...s.td, color: ot.resultado === 'NO_CONFORME' ? C.rojo : ot.resultado === 'CONFORME' ? C.primario : '#1A1A1A', fontWeight: 600 }}>
                           {ot.resultado ?? '—'}
                         </td>
-                        <td style={{ ...s.td, color: '#1A1A1A' }}>{formatFecha(ot.fechaIntervencion)}</td>
-                        <td style={{ ...s.td, color: '#1A1A1A' }}>{ot.autor?.nombre ?? '—'}</td>
+                        {/* Fecha y Técnico son contexto secundario — gris para no competir con Activo */}
+                        <td style={{ ...s.td, color: C.gris }} className="col-secundaria">{formatFecha(ot.fechaIntervencion)}</td>
+                        <td style={{ ...s.td, color: C.gris }} className="col-secundaria">{ot.autor?.nombre ?? '—'}</td>
+                        <td style={{ ...s.td, textAlign: 'right' }}>
+                          {/* ot.activo.id confirmado en dashboard/service.js línea 126 */}
+                          {ot.activo?.id && (
+                            <Link
+                              to={`/activos/${ot.activo.id}`}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                                padding: '0.25rem 0.65rem', borderRadius: 999,
+                                fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap',
+                                background: 'rgba(164,198,58,0.12)', color: C.primario,
+                                border: `2px solid ${C.primario}`,
+                                outline: 'none', boxShadow: 'none',
+                                transition: 'all 0.2s ease',
+                              }}
+                              onMouseEnter={e => {
+                                e.currentTarget.style.background = C.primario;
+                                e.currentTarget.style.color = '#fff';
+                              }}
+                              onMouseLeave={e => {
+                                e.currentTarget.style.background = '#fff';
+                                e.currentTarget.style.color = C.primario;
+                              }}
+                            >
+                              <Eye size={13} />
+                              Ver activo
+                            </Link>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -459,7 +480,7 @@ function Empty({ texto = 'Sin datos' }) {
 const s = {
   card: { background: '#fff', borderRadius: 12, padding: '1.25rem', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' },
   cardTitle: { fontSize: '0.88rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#1A1A1A', marginBottom: '0.75rem' },
-  tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' },
-  th: { textAlign: 'left', padding: '0.4rem 0.6rem', fontWeight: 700, color: '#1A1A1A', fontSize: '0.8rem', textTransform: 'uppercase', borderBottom: '1px solid #f0f0f0' },
-  td: { padding: '0.55rem 0.6rem', verticalAlign: 'middle' },
+  tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', tableLayout: 'fixed' },
+  th: { textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#1A1A1A', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', background: '#F5F5F5', borderBottom: '1px solid #E8E8E8' },
+  td: { padding: '0.875rem 0.75rem', verticalAlign: 'middle', textAlign: 'left' },
 };

@@ -98,3 +98,8 @@ input, select, textarea {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* Columnas secundarias de tabla: se ocultan en móvil para que Tipo, Activo y Resultado quepan */
+@media (max-width: 640px) {
+  .col-secundaria { display: none; }
+}
