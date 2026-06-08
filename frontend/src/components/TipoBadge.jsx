@@ -19,10 +19,13 @@ export default function TipoBadge({ tipo }) {
   const textoOscuro = tipo === 'PREVENTIVO' || tipo === 'INSTALACION';
   return (
     <span style={{
+      display: 'inline-block',
+      minWidth: '6rem',
+      textAlign: 'center',
       background: color,
       color: textoOscuro ? 'var(--color-nav)' : '#fff',
-      padding: '0.2rem 0.6rem',
-      borderRadius: '999px',
+      padding: '0.25rem 0.5rem',
+      borderRadius: '6px',
       fontSize: '0.75rem',
       fontWeight: 600,
       whiteSpace: 'nowrap',
