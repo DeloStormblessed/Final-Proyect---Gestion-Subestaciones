@@ -6,6 +6,25 @@
 # Dependencias de Node
 node_modules/
 
+# Entorno virtual Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Packaging Python
+dist/
+build/
+*.egg-info/
+
+# Tests y cobertura Python
+.pytest_cache/
+htmlcov/
+
+# Vector store local (ChromaDB — se añade en la capa de RAG)
+chroma_db/
+
 # Logs
 *.log
 npm-debug.log*

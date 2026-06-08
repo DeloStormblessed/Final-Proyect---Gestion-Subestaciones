@@ -1,0 +1,80 @@
+"""
+Grafo LangGraph del asistente de mantenimiento.
+
+Arquitectura: ReAct (Reason + Act) con dos tools en esta capa:
+  - DOMAIN_TOOLS: consultan la API de Node (activos, OTs, dashboard)
+  - RAG_TOOLS: se añaden en la capa de RAG (normativa UNE/IEC) — pendiente
+
+Memoria: AsyncPostgresSaver con AsyncConnectionPool persiste el historial por
+thread_id en el Postgres compartido. El pool se inicializa una vez al arrancar
+FastAPI (lifespan) y se cierra al apagar. Python gestiona sus propias tablas;
+Node no las toca.
+"""
+
+from langchain_groq import ChatGroq
+from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg_pool import AsyncConnectionPool
+
+from config import settings
+from agent.tools.domain_tool import DOMAIN_TOOLS
+
+SYSTEM_PROMPT = """Eres un asistente experto en mantenimiento de subestaciones eléctricas.
+Tienes acceso a la base de datos real del sistema GMAO a través de tus herramientas.
+
+Cuando el usuario pregunte sobre activos, órdenes de trabajo o el estado del sistema,
+usa siempre las herramientas disponibles para obtener datos actualizados antes de responder.
+
+Responde en español, de forma clara y técnica. Si usas datos del sistema, menciona
+los códigos de los activos y las fechas relevantes para que la respuesta sea precisa.
+
+Herramientas disponibles:
+- listar_activos: para ver activos con filtros por estado, tipo o inspección vencida
+- detalle_activo: para ver el detalle completo de un activo y su historial de OTs
+- listar_ordenes_trabajo: para consultar órdenes de trabajo recientes
+- dashboard_kpis: para obtener el resumen ejecutivo del sistema
+"""
+
+
+def _conn_string() -> str:
+    # psycopg requiere "postgresql+psycopg://" o simplemente la cadena de psycopg
+    url = settings.database_url
+    # Prisma usa "postgresql://"; psycopg_pool acepta el mismo formato
+    return url
+
+
+async def init_checkpointer() -> tuple[AsyncConnectionPool, AsyncPostgresSaver]:
+    """
+    Crea el pool de conexiones y el checkpointer de LangGraph.
+    Llamar una vez en el lifespan de FastAPI; reutilizar el mismo objeto.
+
+    - from_conn_string usa autocommit=True (necesario para CREATE INDEX CONCURRENTLY)
+    - El pool se usa para las operaciones normales de lectura/escritura
+    """
+    conn_str = _conn_string()
+
+    # Setup con autocommit — CREATE INDEX CONCURRENTLY no puede correr en transacción
+    async with AsyncPostgresSaver.from_conn_string(conn_str) as temp:
+        await temp.setup()
+
+    # Pool persistente para el uso normal durante la vida del servidor
+    pool = AsyncConnectionPool(conninfo=conn_str, max_size=10, open=False)
+    await pool.open()
+    checkpointer = AsyncPostgresSaver(pool)
+
+    return pool, checkpointer
+
+
+def build_agent(checkpointer: AsyncPostgresSaver):
+    """Construye el agente ReAct con el checkpointer inyectado."""
+    llm = ChatGroq(
+        model=settings.groq_model,
+        api_key=settings.groq_api_key,
+        temperature=0,
+    )
+    return create_react_agent(
+        model=llm,
+        tools=DOMAIN_TOOLS,
+        checkpointer=checkpointer,
+        state_modifier=SYSTEM_PROMPT,  # en LangGraph 0.2.x se llama state_modifier
+    )
