@@ -103,3 +103,21 @@ input, select, textarea {
 @media (max-width: 640px) {
   .col-secundaria { display: none; }
 }
+
+/* Inputs y selects de la barra de filtros */
+.filtro-input {
+  height: 36px;
+  padding: 0 0.75rem;
+  border: 1px solid #DDD;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: #FAFAFA;
+  color: var(--color-texto);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.filtro-input:focus {
+  border-color: var(--color-primario);
+  background: #fff;
+}

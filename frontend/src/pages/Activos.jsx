@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Eye } from 'lucide-react';
+import { Eye, Search } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../lib/apiNode.js';
 import EstadoBadge from '../components/EstadoBadge.jsx';
@@ -13,6 +13,13 @@ const TIPOS_ACTIVO = [
   'PARARRAYOS', 'TRANSFORMADOR_MEDIDA', 'BATERIA_CONDENSADORES',
 ];
 
+const ETIQUETA_ESTADO = {
+  EN_SERVICIO:       'En servicio',
+  AVERIADO:          'Averiado',
+  FUERA_DE_SERVICIO: 'Fuera de servicio',
+  DADO_DE_BAJA:      'Dado de baja',
+};
+
 const ETIQUETA_TIPO = {
   TRANSFORMADOR_POTENCIA:  'Transformador potencia',
   INTERRUPTOR_AUTOMATICO:  'Interruptor automático',
@@ -21,6 +28,19 @@ const ETIQUETA_TIPO = {
   TRANSFORMADOR_MEDIDA:    'Transformador medida',
   BATERIA_CONDENSADORES:   'Batería condensadores',
 };
+
+// Orden de criticidad: en un GMAO lo primero que el técnico debe ver es lo que
+// necesita acción inmediata. DADO_DE_BAJA al final porque no es operación diaria.
+const ORDEN_ESTADO = { AVERIADO: 0, FUERA_DE_SERVICIO: 1, EN_SERVICIO: 2, DADO_DE_BAJA: 3 };
+
+function sortByCriticidad(a, b) {
+  const dif = (ORDEN_ESTADO[a.estado] ?? 99) - (ORDEN_ESTADO[b.estado] ?? 99);
+  if (dif !== 0) return dif;
+  // Secundario: fecha de próxima inspección ascendente (la más urgente primero; null al final)
+  const fa = a.fechaProximaInspeccion ? new Date(a.fechaProximaInspeccion).getTime() : Infinity;
+  const fb = b.fechaProximaInspeccion ? new Date(b.fechaProximaInspeccion).getTime() : Infinity;
+  return fa - fb;
+}
 
 function formatFecha(iso) {
   if (!iso) return '—';
@@ -143,13 +163,30 @@ export default function Activos() {
   const [error, setError] = useState('');
   const [mostrarModal, setMostrarModal] = useState(false);
   const [hoveredRow, setHoveredRow] = useState(null);
+  const [mostrarDadosDeBaja, setMostrarDadosDeBaja] = useState(false);
 
   // Filtros
   const [estado, setEstado] = useState('');
   const [tipo, setTipo] = useState('');
   const [busqueda, setBusqueda] = useState('');
+  const [busquedaInput, setBusquedaInput] = useState('');
   const [inspeccionVencida, setInspeccionVencida] = useState(false);
+  const [subestacionId, setSubestacionId] = useState('');
   const [pagina, setPagina] = useState(1);
+
+  // Lista de subestaciones para el selector de filtro
+  const [subestaciones, setSubestaciones] = useState([]);
+  useEffect(() => {
+    apiFetch('/api/v1/subestaciones', {}, token)
+      .then(data => setSubestaciones(data.datos ?? []))
+      .catch(() => {});
+  }, [token]);
+
+  // Debounce de 300ms para la búsqueda: evita llamar a cargar en cada tecla
+  useEffect(() => {
+    const t = setTimeout(() => { setBusqueda(busquedaInput); setPagina(1); }, 300);
+    return () => clearTimeout(t);
+  }, [busquedaInput]);
 
   const puedeCrear = usuario?.rol === 'TECNICO' || usuario?.rol === 'ADMIN';
 
@@ -161,6 +198,7 @@ export default function Activos() {
     if (tipo) params.set('tipo', tipo);
     if (busqueda) params.set('busqueda', busqueda);
     if (inspeccionVencida) params.set('inspeccionVencida', 'true');
+    if (subestacionId) params.set('subestacionId', subestacionId);
 
     apiFetch(`/api/v1/activos?${params}`, {}, token)
       .then(data => {
@@ -169,20 +207,25 @@ export default function Activos() {
       })
       .catch(err => setError(err.message))
       .finally(() => setCargando(false));
-  }, [token, pagina, estado, tipo, busqueda, inspeccionVencida]);
+  }, [token, pagina, estado, tipo, busqueda, inspeccionVencida, subestacionId]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  function handleFiltroSubmit(e) {
-    e.preventDefault();
-    setPagina(1);
-    cargar();
-  }
+// Filtrado y ordenación en cliente — el backend no los soporta sin modificación:
+  // • DADO_DE_BAJA: ocultos por defecto (no son operación diaria) y siempre excluidos
+  //   cuando inspeccionVencida está activo (un activo retirado no se inspecciona,
+  //   alineado con el dashboard que ya los excluye de ese KPI).
+  // • sortByCriticidad: AVERIADO → FUERA_DE_SERVICIO → EN_SERVICIO → DADO_DE_BAJA,
+  //   con fechaProximaInspeccion ascendente como desempate.
+  const activosVisibles = [...activos]
+    .filter(a => mostrarDadosDeBaja ? a.estado === 'DADO_DE_BAJA' : a.estado !== 'DADO_DE_BAJA')
+    .sort(sortByCriticidad);
+
+  const filtroActivo = !!(estado || tipo || busquedaInput || inspeccionVencida || subestacionId || mostrarDadosDeBaja);
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Activos</h2>
         {puedeCrear && (
           <button className="btn-primario" onClick={() => setMostrarModal(true)}>
             + Nuevo activo
@@ -190,41 +233,64 @@ export default function Activos() {
         )}
       </div>
 
-      {/* Filtros */}
-      <form onSubmit={handleFiltroSubmit} style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem', alignItems: 'flex-end' }}>
-        <select value={estado} onChange={e => setEstado(e.target.value)} style={estilosFiltro.select}>
+      {/* Barra de filtros reactiva — aplica al instante sin botón intermedio */}
+      <div style={{ background: '#fff', borderRadius: 12, padding: '1rem 1.25rem', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.65rem', alignItems: 'center' }}>
+
+        {/* Búsqueda con icono de lupa */}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <Search size={14} style={{ position: 'absolute', left: '0.6rem', color: '#aaa', pointerEvents: 'none' }} />
+          <input
+            className="filtro-input"
+            value={busquedaInput}
+            onChange={e => setBusquedaInput(e.target.value)}
+            placeholder="Buscar por código, fabricante…"
+            style={{ paddingLeft: '2rem', minWidth: 210 }}
+          />
+        </div>
+
+        <select className="filtro-input" value={estado} onChange={e => { setEstado(e.target.value); setPagina(1); }}>
           <option value="">Todos los estados</option>
-          {ESTADOS_ACTIVO.map(e => <option key={e} value={e}>{e.replace(/_/g, ' ')}</option>)}
+          {ESTADOS_ACTIVO.map(e => <option key={e} value={e}>{ETIQUETA_ESTADO[e]}</option>)}
         </select>
 
-        <select value={tipo} onChange={e => setTipo(e.target.value)} style={estilosFiltro.select}>
+        <select className="filtro-input" value={tipo} onChange={e => { setTipo(e.target.value); setPagina(1); }}>
           <option value="">Todos los tipos</option>
           {TIPOS_ACTIVO.map(t => <option key={t} value={t}>{ETIQUETA_TIPO[t]}</option>)}
         </select>
 
-        <input
-          value={busqueda}
-          onChange={e => setBusqueda(e.target.value)}
-          placeholder="Buscar por código, fabricante…"
-          style={{ ...estilosFiltro.select, minWidth: 200 }}
-        />
+        <select className="filtro-input" value={subestacionId} onChange={e => { setSubestacionId(e.target.value); setPagina(1); }}>
+          <option value="">Todas las subestaciones</option>
+          {subestaciones.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+        </select>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.875rem' }}>
-          <input type="checkbox" checked={inspeccionVencida} onChange={e => setInspeccionVencida(e.target.checked)} />
+        {/* Separador visual entre selects y checkboxes */}
+        <div style={{ width: 1, height: 28, background: '#E8E8E8', flexShrink: 0 }} />
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <input type="checkbox" checked={inspeccionVencida} onChange={e => { setInspeccionVencida(e.target.checked); setPagina(1); }} />
           Inspección vencida
         </label>
 
-        <button type="submit" className="btn-primario" style={{ padding: '0.5rem 1rem' }}>Filtrar</button>
-        <button type="button" className="btn-secundario" onClick={() => { setEstado(''); setTipo(''); setBusqueda(''); setInspeccionVencida(false); setPagina(1); }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <input type="checkbox" checked={mostrarDadosDeBaja} onChange={e => { setMostrarDadosDeBaja(e.target.checked); setPagina(1); }} />
+          Dado de baja
+        </label>
+
+        <button
+          type="button"
+          className="btn-secundario"
+          style={{ marginLeft: 'auto', padding: '0.45rem 1rem', fontSize: '0.875rem', color: filtroActivo ? 'var(--color-ambar)' : undefined, borderColor: filtroActivo ? 'var(--color-ambar)' : undefined }}
+          onClick={() => { setEstado(''); setTipo(''); setBusquedaInput(''); setBusqueda(''); setInspeccionVencida(false); setSubestacionId(''); setMostrarDadosDeBaja(false); setPagina(1); }}
+        >
           Limpiar
         </button>
-      </form>
+      </div>
 
       {error && <p className="banner-error" style={{ marginBottom: '1rem' }}>{error}</p>}
 
       {cargando ? (
         <div style={{ textAlign: 'center', padding: '3rem' }}><span className="spinner" /></div>
-      ) : activos.length === 0 ? (
+      ) : activosVisibles.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: '#aaa' }}>
           No se encontraron activos con los filtros aplicados
         </div>
@@ -232,19 +298,24 @@ export default function Activos() {
         <>
           <div style={{ overflowX: 'auto', background: 'var(--color-fondo)', borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
             <table style={estilos.tabla}>
+              {/* Orden de columnas por prioridad operacional: primero qué es el activo
+                  (código, tipo), luego en qué condición está y cuándo toca revisarlo
+                  (estado, próxima inspección — lo accionable, donde el ojo llega antes),
+                  luego dónde está físicamente (subestación), y al final el dato de
+                  catálogo (fabricante), que es el menos urgente para operar. */}
               <thead>
                 <tr>
-                  <th style={estilos.th}>Código</th>
-                  <th style={estilos.th}>Tipo</th>
-                  <th style={estilos.th}>Fabricante</th>
-                  <th style={estilos.th} className="col-secundaria">Subestación</th>
-                  <th style={estilos.th}>Estado</th>
-                  <th style={estilos.th} className="col-secundaria">Próx. inspección</th>
-                  <th style={estilos.th}></th>
+                  <th style={{ ...estilos.th, width: '10%' }}>Código</th>
+                  <th style={{ ...estilos.th, width: '20%' }}>Tipo</th>
+                  <th style={{ ...estilos.th, width: '15%' }}>Estado</th>
+                  <th style={{ ...estilos.th, width: '13%' }}>Próx. inspección</th>
+                  <th style={{ ...estilos.th, width: '17%' }} className="col-secundaria">Subestación</th>
+                  <th style={{ ...estilos.th, width: '15%' }} className="col-secundaria">Fabricante</th>
+                  <th style={{ ...estilos.th, width: '10%' }}></th>
                 </tr>
               </thead>
               <tbody>
-                {activos.map((activo, idx) => (
+                {activosVisibles.map((activo, idx) => (
                   <tr
                     key={activo.id}
                     onMouseEnter={() => setHoveredRow(activo.id)}
@@ -257,20 +328,22 @@ export default function Activos() {
                     {/* Código es el dato principal — weight 600 para que el ojo lo encuentre primero */}
                     <td style={{ ...estilos.td, fontWeight: 600, color: '#1A1A1A' }}>{activo.codigo}</td>
                     <td style={estilos.td}>{ETIQUETA_TIPO[activo.tipo] ?? activo.tipo}</td>
-                    <td style={estilos.td}>{activo.fabricante}</td>
-                    {/* Subestación y fecha son contexto secundario — gris para no competir con Código */}
-                    <td style={{ ...estilos.td, color: C.gris }} className="col-secundaria">{activo.subestacion?.nombre ?? '—'}</td>
                     <td style={estilos.td}><EstadoBadge estado={activo.estado} /></td>
-                    <td style={{ ...estilos.td, color: C.gris }} className="col-secundaria">{formatFecha(activo.fechaProximaInspeccion)}</td>
+                    <td style={{ ...estilos.td, color: C.gris }}>{formatFecha(activo.fechaProximaInspeccion)}</td>
+                    {/* Subestación: dato de localización, color normal */}
+                    <td style={{ ...estilos.td, color: '#1A1A1A' }} className="col-secundaria">{activo.subestacion?.nombre ?? '—'}</td>
+                    {/* Fabricante: dato de catálogo, el menos urgente — gris suave */}
+                    <td style={{ ...estilos.td, color: C.gris }} className="col-secundaria">{activo.fabricante}</td>
                     <td style={{ ...estilos.td, textAlign: 'right' }}>
                       <Link
                         to={`/activos/${activo.id}`}
+                        title="Ver detalle"
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
                           padding: '0.25rem 0.65rem', borderRadius: 999,
                           fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap',
                           background: 'rgba(164,198,58,0.12)', color: C.primario,
-                          border: `2px solid ${C.primario}`,
+                          border: `1.5px solid ${C.primario}`,
                           outline: 'none', transition: 'all 0.2s ease',
                         }}
                         onMouseEnter={e => {
@@ -317,9 +390,9 @@ export default function Activos() {
 }
 
 const estilos = {
-  tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' },
+  tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', tableLayout: 'fixed' },
   th: { textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#1A1A1A', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', background: '#F5F5F5', borderBottom: '1px solid #E8E8E8' },
-  td: { padding: '0.875rem 0.75rem', verticalAlign: 'middle', textAlign: 'left' },
+  td: { padding: '0.875rem 0.75rem', verticalAlign: 'middle', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
 };
 
 const estilosFiltro = {

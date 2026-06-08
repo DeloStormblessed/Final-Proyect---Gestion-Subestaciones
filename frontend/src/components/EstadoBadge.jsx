@@ -16,10 +16,13 @@ export default function EstadoBadge({ estado }) {
   const color = COLORES[estado] ?? 'var(--color-gris)';
   return (
     <span style={{
+      display: 'inline-block',
+      minWidth: '8.5rem',
+      textAlign: 'center',
       background: color,
       color: estado === 'FUERA_DE_SERVICIO' ? '#333' : estado === 'EN_SERVICIO' ? 'var(--color-nav)' : '#fff',
-      padding: '0.2rem 0.6rem',
-      borderRadius: '999px',
+      padding: '0.25rem 0.5rem',
+      borderRadius: '6px',
       fontSize: '0.75rem',
       fontWeight: 600,
       whiteSpace: 'nowrap',
