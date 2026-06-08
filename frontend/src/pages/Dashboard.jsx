@@ -278,8 +278,8 @@ export default function Dashboard() {
         })()}
 
         {/* Donuts apilados — la columna estira para igualar la altura del gráfico */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div style={{ ...s.card, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+          <div style={{ ...s.card, flex: 1, display: 'flex', flexDirection: 'column' }}>
             <p style={s.cardTitle}>Activos por estado</p>
             {donutEstado.length === 0 ? <Empty /> : (
               <DonutConLeyenda
@@ -290,7 +290,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div style={{ ...s.card, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div style={{ ...s.card, flex: 1, display: 'flex', flexDirection: 'column' }}>
             <p style={s.cardTitle}>OTs por tipo (30 días)</p>
             {donutTipo.length === 0 ? <Empty /> : (
               <DonutConLeyenda
@@ -393,7 +393,8 @@ export default function Dashboard() {
 function DonutConLeyenda({ datos, colorKey, colorMap }) {
   const total = datos.reduce((s, d) => s + d.value, 0);
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+    // columna: donut arriba, leyenda abajo, espacio distribuido uniformemente
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-evenly', flex: 1, minHeight: 0 }}>
       <div style={{ flexShrink: 0, width: 150, height: 150, position: 'relative' }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
@@ -401,7 +402,6 @@ function DonutConLeyenda({ datos, colorKey, colorMap }) {
               paddingAngle={2} dataKey="value" labelLine={false}>
               {datos.map(e => <Cell key={e[colorKey]} fill={colorMap[e[colorKey]] ?? C.gris} />)}
             </Pie>
-            <Tooltip formatter={(v, n) => [v, n]} />
           </PieChart>
         </ResponsiveContainer>
         {/* Total en el centro del hueco del donut */}
@@ -413,7 +413,7 @@ function DonutConLeyenda({ datos, colorKey, colorMap }) {
           <span style={{ fontSize: '2rem', fontWeight: 800, color: '#1A1A1A', lineHeight: 1 }}>{total}</span>
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', flex: 1, minWidth: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '100%' }}>
         {datos.map(e => (
           <div key={e[colorKey]} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
