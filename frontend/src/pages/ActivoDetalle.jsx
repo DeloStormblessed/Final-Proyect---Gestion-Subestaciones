@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { Info } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../lib/apiNode.js';
 import EstadoBadge from '../components/EstadoBadge.jsx';
 import TipoBadge from '../components/TipoBadge.jsx';
 
-const TIPOS_OT = ['INSPECCION', 'PREVENTIVO', 'CORRECTIVO', 'INSTALACION', 'BAJA'];
+const TIPOS_OT = ['PREVENTIVO', 'CORRECTIVO', 'INSPECCION', 'INSTALACION', 'BAJA'];
 const RESULTADOS = ['CONFORME', 'NO_CONFORME'];
 
 const ETIQUETA_TIPO_ACTIVO = {
@@ -110,13 +111,13 @@ function ModalRegistrarOT({ activo, token, onCerrar, onRegistrada, rolUsuario })
         tipo: form.tipo,
         descripcion: form.descripcion,
         fechaIntervencion: form.fechaIntervencion,
-        activoId: activo.id,
       };
-      // resultado solo aplica a INSPECCION
+      // resultado solo aplica a INSPECCION (schema Zod lo rechaza en otro caso)
       if (form.tipo === 'INSPECCION' && form.resultado) {
         payload.resultado = form.resultado;
       }
-      await apiFetch('/api/v1/ordenes-trabajo', {
+      // El activo id va en la URL, no en el body — endpoint anidado bajo activos
+      await apiFetch(`/api/v1/activos/${activo.id}/ordenes-trabajo`, {
         method: 'POST',
         body: JSON.stringify(payload),
       }, token);
@@ -145,6 +146,19 @@ function ModalRegistrarOT({ activo, token, onCerrar, onRegistrada, rolUsuario })
               {tiposDisponibles.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
+
+          {/* Aviso informativo: inspeccionar un activo no operativo es un no-op de estado
+              según la máquina de estados (diagnostica, no repara), pero es una intervención
+              real y válida que debe poder registrarse. El aviso hace visible esa regla
+              sin bloquear la acción. */}
+          {form.tipo === 'INSPECCION' && activo.estado !== 'EN_SERVICIO' && (
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', background: 'rgba(156,140,247,0.08)', border: '1px solid rgba(156,140,247,0.3)', borderRadius: 8, padding: '0.65rem 0.85rem' }}>
+              <Info size={15} style={{ color: 'var(--color-violeta)', flexShrink: 0, marginTop: 1 }} />
+              <span style={{ fontSize: '0.82rem', color: 'var(--color-violeta)', lineHeight: 1.5 }}>
+                Esta inspección quedará registrada como diagnóstico, pero no cambiará el estado del activo. Para devolverlo a servicio, registra un correctivo.
+              </span>
+            </div>
+          )}
 
           {/* Resultado solo se pide cuando es INSPECCION */}
           {form.tipo === 'INSPECCION' && (
@@ -284,7 +298,12 @@ export default function ActivoDetalle() {
                 </tr>
               </thead>
               <tbody>
-                {activo.ordenesTrabajo.map(ot => (
+                {/* Ordenamos por createdAt desc (timestamp completo) y no por fechaIntervencion
+                    (solo día): dos OTs del mismo día quedan en su orden real de creación
+                    y la cadena estadoNuevo→estadoAnterior se lee coherente. */}
+                {[...activo.ordenesTrabajo]
+                  .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                  .map(ot => (
                   <tr key={ot.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
                     <td style={estilos.td}><TipoBadge tipo={ot.tipo} /></td>
                     <td style={{ ...estilos.td, maxWidth: 260, whiteSpace: 'pre-wrap' }}>{ot.descripcion}</td>

@@ -22,6 +22,15 @@ const IconActivos = ({ size = 20, color = 'currentColor' }) => (
   </svg>
 );
 
+const IconOrdenes = ({ size = 20, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+    <rect x="9" y="3" width="6" height="4" rx="1" />
+    <line x1="9" y1="12" x2="15" y2="12" />
+    <line x1="9" y1="16" x2="13" y2="16" />
+  </svg>
+);
+
 const IconChat = ({ size = 20, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -43,9 +52,10 @@ const IconLogo = ({ size = 20, color = 'currentColor' }) => (
 );
 
 const NAV_ITEMS = [
-  { to: '/dashboard', label: 'Dashboard', Icon: IconDashboard },
-  { to: '/activos',   label: 'Activos',   Icon: IconActivos   },
-  { to: '/chat',      label: 'Asistente', Icon: IconChat      },
+  { to: '/dashboard',        label: 'Dashboard', Icon: IconDashboard },
+  { to: '/activos',          label: 'Activos',   Icon: IconActivos   },
+  { to: '/ordenes-trabajo',  label: 'Órdenes',   Icon: IconOrdenes   },
+  { to: '/chat',             label: 'Asistente', Icon: IconChat      },
 ];
 
 export default function Layout() {

@@ -2,9 +2,10 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const NAV_ITEMS = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/activos',   label: 'Activos'   },
-  { to: '/chat',      label: 'Asistente' },
+  { to: '/dashboard',         label: 'Dashboard' },
+  { to: '/activos',           label: 'Activos'   },
+  { to: '/ordenes-trabajo',   label: 'Órdenes'   },
+  { to: '/chat',              label: 'Asistente' },
 ];
 
 const ROL_COLOR = {

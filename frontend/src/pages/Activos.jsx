@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Eye, Search } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../lib/apiNode.js';
 import EstadoBadge from '../components/EstadoBadge.jsx';
+import ModalNuevaOT from '../components/ModalNuevaOT.jsx';
 
 const C = { primario: '#A4C63A', gris: '#9AA0A6' };
 
@@ -157,11 +158,14 @@ function ModalNuevoActivo({ onCerrar, onCreado, token }) {
 
 export default function Activos() {
   const { token, usuario } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activos, setActivos] = useState([]);
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1 });
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [mostrarModal, setMostrarModal] = useState(false);
+  const [mostrarModalOT, setMostrarModalOT] = useState(false);
+  const [confirmacion, setConfirmacion] = useState('');
   const [hoveredRow, setHoveredRow] = useState(null);
   const [mostrarDadosDeBaja, setMostrarDadosDeBaja] = useState(false);
 
@@ -173,6 +177,14 @@ export default function Activos() {
   const [inspeccionVencida, setInspeccionVencida] = useState(false);
   const [subestacionId, setSubestacionId] = useState('');
   const [pagina, setPagina] = useState(1);
+
+  // Si se navega desde la navbar con ?nueva-ot=1, abrir el modal directamente
+  useEffect(() => {
+    if (searchParams.get('nueva-ot') === '1') {
+      setMostrarModalOT(true);
+      setSearchParams({}, { replace: true }); // limpia el param de la URL
+    }
+  }, [searchParams, setSearchParams]);
 
   // Lista de subestaciones para el selector de filtro
   const [subestaciones, setSubestaciones] = useState([]);
@@ -225,11 +237,18 @@ export default function Activos() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-        {puedeCrear && (
-          <button className="btn-primario" onClick={() => setMostrarModal(true)}>
-            + Nuevo activo
-          </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center' }}>
+          {puedeCrear && (
+            <button className="btn-primario" onClick={() => setMostrarModal(true)}>
+              + Nuevo activo
+            </button>
+          )}
+        </div>
+        {confirmacion && (
+          <span style={{ fontSize: '0.875rem', color: 'var(--color-primario)', fontWeight: 600 }}>
+            {confirmacion}
+          </span>
         )}
       </div>
 
@@ -383,6 +402,20 @@ export default function Activos() {
           token={token}
           onCerrar={() => setMostrarModal(false)}
           onCreado={() => { setMostrarModal(false); cargar(); }}
+        />
+      )}
+
+      {mostrarModalOT && (
+        <ModalNuevaOT
+          token={token}
+          usuario={usuario}
+          onCerrar={() => setMostrarModalOT(false)}
+          onCreada={() => {
+            setMostrarModalOT(false);
+            cargar(); // el estado del activo puede haber cambiado tras la OT
+            setConfirmacion('OT registrada correctamente.');
+            setTimeout(() => setConfirmacion(''), 4000);
+          }}
         />
       )}
     </div>
