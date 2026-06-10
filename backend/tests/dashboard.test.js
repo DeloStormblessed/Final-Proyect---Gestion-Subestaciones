@@ -59,18 +59,23 @@ beforeAll(async () => {
   const ahora = new Date();
   const enDias = (d) => new Date(ahora.getTime() + d * 24 * 60 * 60 * 1000);
 
-  const crearActivo = (codigo, estado, diasHastaInspeccion) =>
-    prisma.activo.create({
+  // V2 — crearActivo recibe el estado lógico V1 como cadena y lo mapea a los dos ejes.
+  const crearActivo = (codigo, estadoLogico, diasHastaInspeccion) => {
+    const cicloVida = estadoLogico === "DADO_DE_BAJA" ? "DADO_DE_BAJA" : "OPERATIVO";
+    const disponibilidad = estadoLogico === "DADO_DE_BAJA" ? "EN_SERVICIO" : estadoLogico;
+    return prisma.activo.create({
       data: {
         codigo,
         tipo: "TRANSFORMADOR_POTENCIA",
         fabricante: "TestFab",
         fechaPuestaEnServicio: enDias(-365),
         fechaProximaInspeccion: enDias(diasHastaInspeccion),
-        estado,
+        cicloVida,
+        disponibilidad,
         subestacionId,
       },
     });
+  };
 
   // Dataset de activos diseñado para producir métricas verificables:
   //
@@ -124,8 +129,12 @@ beforeAll(async () => {
       data: {
         tipo,
         descripcion: `OT ${tipo}`,
-        estadoAnterior: "EN_SERVICIO",
-        estadoNuevo: "EN_SERVICIO",
+        cicloVidaAnterior: "OPERATIVO",
+        disponibilidadAnterior: "EN_SERVICIO",
+        cicloVidaNueva: "OPERATIVO",
+        disponibilidadNueva: "EN_SERVICIO",
+        // PREVENTIVO y CORRECTIVO requieren resultadoIntervencion en V2
+        ...(["PREVENTIVO", "CORRECTIVO"].includes(tipo) ? { resultadoIntervencion: "OPERATIVO" } : {}),
         fechaIntervencion: enDias(diasDesdeHoy),
         createdAt: enDias(diasDesdeHoy),
         activoId,
@@ -200,8 +209,8 @@ describe("Dashboard — activosPorEstado", () => {
     // Vacíamos solo los activos AVERIADO y FUERA_DE_SERVICIO para verificar que sus claves
     // siguen apareciendo a 0. Restauramos al final para no romper otros tests del describe.
     await prisma.activo.updateMany({
-      where: { estado: { in: ["AVERIADO", "FUERA_DE_SERVICIO"] } },
-      data: { estado: "EN_SERVICIO" },
+      where: { disponibilidad: { in: ["AVERIADO", "FUERA_DE_SERVICIO"] } },
+      data: { disponibilidad: "EN_SERVICIO" },
     });
 
     const res = await request(app)
@@ -211,14 +220,14 @@ describe("Dashboard — activosPorEstado", () => {
     expect(res.body.activosPorEstado).toHaveProperty("AVERIADO", 0);
     expect(res.body.activosPorEstado).toHaveProperty("FUERA_DE_SERVICIO", 0);
 
-    // Restauración: los IDs que cambiamos vuelven a su estado original.
+    // Restauración: los IDs que cambiamos vuelven a su disponibilidad original.
     await prisma.activo.update({
       where: { id: activoAveriadoId },
-      data: { estado: "AVERIADO" },
+      data: { disponibilidad: "AVERIADO" },
     });
     await prisma.activo.update({
       where: { id: activoFueraId },
-      data: { estado: "FUERA_DE_SERVICIO" },
+      data: { disponibilidad: "FUERA_DE_SERVICIO" },
     });
   });
 });
@@ -249,7 +258,7 @@ describe("Dashboard — inspeccionesVencidas y topInspeccionesAtrasadas", () => 
 
   it("el top NUNCA incluye activos DADO_DE_BAJA aunque su inspección esté vencida", async () => {
     // Test redundante con el anterior, pero blinda explícitamente la regla del filtro.
-    // Si mañana alguien quita el `estado: { not: 'DADO_DE_BAJA' }` del where, este test cae.
+    // Si mañana alguien quita el `cicloVida: "OPERATIVO"` del where, este test cae.
     const res = await request(app)
       .get("/api/v1/dashboard")
       .set("Authorization", `Bearer ${tokenAdmin}`);

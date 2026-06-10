@@ -90,7 +90,7 @@ beforeAll(async () => {
       fabricante: "Test Co",
       fechaPuestaEnServicio: new Date(),
       fechaProximaInspeccion: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
-      estado: "EN_SERVICIO",
+      // cicloVida/disponibilidad usan defaults de Prisma (OPERATIVO/EN_SERVICIO)
       subestacionId: conActivo.id,
     },
   });

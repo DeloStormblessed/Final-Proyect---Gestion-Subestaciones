@@ -6,15 +6,6 @@ const DIAS_VENTANA_OTS_RECIENTES = 30;
 const LIMITE_TOP_INSPECCIONES_ATRASADAS = 10;
 const LIMITE_ULTIMAS_OTS = 10;
 
-// Enums replicados para garantizar que la respuesta SIEMPRE incluya todas las claves
-// aunque no haya datos (ver decisión §1 del dashboard: el ingeniero quiere ver "AVERIADO: 0"
-// explícito, no una clave que desaparece cuando no hay datos).
-const ESTADOS_ACTIVO = [
-  "EN_SERVICIO",
-  "AVERIADO",
-  "FUERA_DE_SERVICIO",
-  "DADO_DE_BAJA",
-];
 const TIPOS_ORDEN_TRABAJO = [
   "INSPECCION",
   "PREVENTIVO",
@@ -53,20 +44,37 @@ export async function obtenerDashboard() {
     ahora.getTime() - DIAS_VENTANA_OTS_RECIENTES * 24 * 60 * 60 * 1000,
   );
 
-  // 5 queries independientes en paralelo. Prisma maneja el pool de conexiones, así que
-  // lanzar 5 a la vez NO satura la BD (es la diferencia entre concurrencia y paralelismo).
+  // V2 — activosPorEstado: groupBy no puede cruzar dos ejes, se usan 4 counts paralelos.
+  // Los cuatro "estados lógicos" del dashboard corresponden a combinaciones de cicloVida+disponibilidad:
+  //   EN_SERVICIO       = OPERATIVO + EN_SERVICIO
+  //   AVERIADO          = OPERATIVO + AVERIADO
+  //   FUERA_DE_SERVICIO = OPERATIVO + FUERA_DE_SERVICIO
+  //   DADO_DE_BAJA      = DADO_DE_BAJA (disponibilidad congelada, irrelevante para el KPI)
   const [
-    filasActivosPorEstado,
+    enServicioCount,
+    averiadoCount,
+    fueraCount,
+    bajaCount,
     inspeccionesVencidas,
     topInspeccionesAtrasadas,
     filasOtsPorTipo,
     ultimasOrdenesTrabajo,
   ] = await Promise.all([
-    // 1. Conteo de activos por estado. groupBy es más limpio que 4 counts paralelos
-    // y hace una sola consulta agregada en PostgreSQL.
-    prisma.activo.groupBy({
-      by: ["estado"],
-      _count: { _all: true },
+    // 1a. Activos operativos en servicio
+    prisma.activo.count({
+      where: { cicloVida: "OPERATIVO", disponibilidad: "EN_SERVICIO" },
+    }),
+    // 1b. Activos operativos averiados
+    prisma.activo.count({
+      where: { cicloVida: "OPERATIVO", disponibilidad: "AVERIADO" },
+    }),
+    // 1c. Activos operativos en descargo
+    prisma.activo.count({
+      where: { cicloVida: "OPERATIVO", disponibilidad: "FUERA_DE_SERVICIO" },
+    }),
+    // 1d. Activos dados de baja (cicloVida terminal)
+    prisma.activo.count({
+      where: { cicloVida: "DADO_DE_BAJA" },
     }),
 
     // 2. Conteo de activos con inspección vencida. Excluimos DADO_DE_BAJA porque un activo
@@ -75,7 +83,7 @@ export async function obtenerDashboard() {
     prisma.activo.count({
       where: {
         fechaProximaInspeccion: { lt: ahora },
-        estado: { not: "DADO_DE_BAJA" },
+        cicloVida: "OPERATIVO",
       },
     }),
 
@@ -86,7 +94,7 @@ export async function obtenerDashboard() {
     prisma.activo.findMany({
       where: {
         fechaProximaInspeccion: { lt: ahora },
-        estado: { not: "DADO_DE_BAJA" },
+        cicloVida: "OPERATIVO",
       },
       orderBy: { fechaProximaInspeccion: "asc" },
       take: LIMITE_TOP_INSPECCIONES_ATRASADAS,
@@ -94,7 +102,8 @@ export async function obtenerDashboard() {
         id: true,
         codigo: true,
         tipo: true,
-        estado: true,
+        cicloVida: true,
+        disponibilidad: true,
         fechaProximaInspeccion: true,
         subestacion: { select: { id: true, codigo: true, nombre: true } },
       },
@@ -119,8 +128,11 @@ export async function obtenerDashboard() {
         id: true,
         tipo: true,
         resultado: true,
-        estadoAnterior: true,
-        estadoNuevo: true,
+        // V2 — snapshot de dos ejes en lugar del par estadoAnterior/estadoNuevo de V1
+        cicloVidaAnterior: true,
+        disponibilidadAnterior: true,
+        cicloVidaNueva: true,
+        disponibilidadNueva: true,
         fechaIntervencion: true,
         createdAt: true,
         activo: { select: { id: true, codigo: true, tipo: true } },
@@ -138,11 +150,12 @@ export async function obtenerDashboard() {
   }));
 
   return {
-    activosPorEstado: aMapaConCerosPorDefecto(
-      filasActivosPorEstado,
-      "estado",
-      ESTADOS_ACTIVO,
-    ),
+    activosPorEstado: {
+      EN_SERVICIO: enServicioCount,
+      AVERIADO: averiadoCount,
+      FUERA_DE_SERVICIO: fueraCount,
+      DADO_DE_BAJA: bajaCount,
+    },
     inspeccionesVencidas,
     topInspeccionesAtrasadas: topConDiasDeRetraso,
     otsUltimos30DiasPorTipo: aMapaConCerosPorDefecto(

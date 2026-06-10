@@ -126,7 +126,7 @@ beforeAll(async () => {
       fabricante: "Siemens",
       modelo: "SION-145",
       fechaPuestaEnServicio: new Date("2025-06-01"),
-      fechaProximaInspeccion: new Date("2026-06-01"),
+      fechaProximaInspeccion: new Date("2027-06-01"),
       subestacionId: otraSubestacionId,
     },
   });
@@ -253,19 +253,19 @@ describe("POST /api/v1/activos", () => {
       });
     expect(res.status).toBe(201);
     expect(res.body.codigo).toBe("SEC-001");
-    expect(res.body.estado).toBe("EN_SERVICIO");
+    expect(res.body.cicloVida).toBe("OPERATIVO");
+    expect(res.body.disponibilidad).toBe("EN_SERVICIO");
 
-    // Verificamos en BD que la OT INSTALACION se creó con el snapshot correcto.
-    // Probar la atomicidad de la transacción comprobando el lado "se creó"; el
-    // lado "no se creó si falla" requiere forzar un fallo y se cubre en
-    // Conversación B (cuando tengamos errores de regla A).
+    // Verificamos en BD que la OT INSTALACION se creó con el snapshot V2 correcto.
     const ots = await prisma.ordenTrabajo.findMany({
       where: { activoId: res.body.id },
     });
     expect(ots.length).toBe(1);
     expect(ots[0].tipo).toBe("INSTALACION");
-    expect(ots[0].estadoAnterior).toBe("DADO_DE_BAJA");
-    expect(ots[0].estadoNuevo).toBe("EN_SERVICIO");
+    expect(ots[0].cicloVidaAnterior).toBeNull();
+    expect(ots[0].disponibilidadAnterior).toBeNull();
+    expect(ots[0].cicloVidaNueva).toBe("OPERATIVO");
+    expect(ots[0].disponibilidadNueva).toBe("EN_SERVICIO");
   });
 
   it("calcula fechaProximaInspeccion segun tipo (SECCIONADOR = 90 dias)", async () => {
@@ -374,7 +374,8 @@ describe("POST /api/v1/activos/:id/ordenes-trabajo", () => {
         tipo: "TRANSFORMADOR_POTENCIA",
         fabricante: "TestCorp",
         fechaPuestaEnServicio: new Date(),
-        estado: "EN_SERVICIO",
+        cicloVida: "OPERATIVO",
+        disponibilidad: "EN_SERVICIO",
         // Inspección futura: regla B no se activa.
         fechaProximaInspeccion: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         subestacionId: subestacionId, // creado en beforeAll
@@ -411,7 +412,7 @@ describe("POST /api/v1/activos/:id/ordenes-trabajo", () => {
       const res = await request(app)
         .post(`/api/v1/activos/${activoTestId}/ordenes-trabajo`)
         .set("Authorization", `Bearer ${tokenOperario}`)
-        .send({ tipo: "PREVENTIVO", descripcion: "Mantenimiento anual" });
+        .send({ tipo: "PREVENTIVO", descripcion: "Mantenimiento anual", resultadoIntervencion: "OPERATIVO" });
       expect(res.status).toBe(403);
     });
 
@@ -419,7 +420,7 @@ describe("POST /api/v1/activos/:id/ordenes-trabajo", () => {
       const res = await request(app)
         .post(`/api/v1/activos/${activoTestId}/ordenes-trabajo`)
         .set("Authorization", `Bearer ${tokenTecnico}`)
-        .send({ tipo: "CORRECTIVO", descripcion: "Sustitución de fusible" });
+        .send({ tipo: "CORRECTIVO", descripcion: "Sustitución de fusible", resultadoIntervencion: "OPERATIVO" });
       expect(res.status).toBe(201);
     });
   });
@@ -440,13 +441,13 @@ describe("POST /api/v1/activos/:id/ordenes-trabajo", () => {
         });
 
       expect(res.status).toBe(201);
-      expect(res.body.estadoAnterior).toBe("EN_SERVICIO");
-      expect(res.body.estadoNuevo).toBe("EN_SERVICIO");
+      expect(res.body.disponibilidadAnterior).toBe("EN_SERVICIO");
+      expect(res.body.disponibilidadNueva).toBe("EN_SERVICIO");
 
       const activoDespues = await prisma.activo.findUnique({
         where: { id: activoTestId },
       });
-      expect(activoDespues.estado).toBe("EN_SERVICIO");
+      expect(activoDespues.disponibilidad).toBe("EN_SERVICIO");
       // La nueva fecha tiene que ser POSTERIOR a la anterior (se ha recalculado).
       expect(activoDespues.fechaProximaInspeccion.getTime()).toBeGreaterThan(
         fechaAntes.getTime(),
@@ -467,12 +468,12 @@ describe("POST /api/v1/activos/:id/ordenes-trabajo", () => {
         });
 
       expect(res.status).toBe(201);
-      expect(res.body.estadoNuevo).toBe("AVERIADO");
+      expect(res.body.disponibilidadNueva).toBe("AVERIADO");
 
       const activoDespues = await prisma.activo.findUnique({
         where: { id: activoTestId },
       });
-      expect(activoDespues.estado).toBe("AVERIADO");
+      expect(activoDespues.disponibilidad).toBe("AVERIADO");
 
       // Webhook disparado con evento correcto.
       expect(notificarWebhook).toHaveBeenCalledTimes(1);
@@ -490,10 +491,10 @@ describe("POST /api/v1/activos/:id/ordenes-trabajo", () => {
       const res = await request(app)
         .post(`/api/v1/activos/${activoTestId}/ordenes-trabajo`)
         .set("Authorization", `Bearer ${tokenTecnico}`)
-        .send({ tipo: "CORRECTIVO", descripcion: "Reemplazo de bobina" });
+        .send({ tipo: "CORRECTIVO", descripcion: "Reemplazo de bobina", resultadoIntervencion: "EN_DESCARGO" });
 
       expect(res.status).toBe(201);
-      expect(res.body.estadoNuevo).toBe("FUERA_DE_SERVICIO");
+      expect(res.body.disponibilidadNueva).toBe("FUERA_DE_SERVICIO");
 
       expect(notificarWebhook).toHaveBeenCalledTimes(1);
       expect(notificarWebhook).toHaveBeenCalledWith(
@@ -506,10 +507,10 @@ describe("POST /api/v1/activos/:id/ordenes-trabajo", () => {
       const res = await request(app)
         .post(`/api/v1/activos/${activoTestId}/ordenes-trabajo`)
         .set("Authorization", `Bearer ${tokenTecnico}`)
-        .send({ tipo: "PREVENTIVO", descripcion: "Mantenimiento programado" });
+        .send({ tipo: "PREVENTIVO", descripcion: "Mantenimiento programado", resultadoIntervencion: "EN_DESCARGO" });
 
       expect(res.status).toBe(201);
-      expect(res.body.estadoNuevo).toBe("FUERA_DE_SERVICIO");
+      expect(res.body.disponibilidadNueva).toBe("FUERA_DE_SERVICIO");
       // PREVENTIVO no es evento crítico.
       expect(notificarWebhook).not.toHaveBeenCalled();
     });
@@ -532,6 +533,7 @@ describe("POST /api/v1/activos/:id/ordenes-trabajo", () => {
         .send({
           tipo: "PREVENTIVO",
           descripcion: "Intento con inspección vencida",
+          resultadoIntervencion: "OPERATIVO",
         });
 
       expect(res.status).toBe(422);
@@ -548,13 +550,13 @@ describe("POST /api/v1/activos/:id/ordenes-trabajo", () => {
     it("Regla A: rechaza PREVENTIVO sobre activo AVERIADO (422)", async () => {
       await prisma.activo.update({
         where: { id: activoTestId },
-        data: { estado: "AVERIADO" },
+        data: { disponibilidad: "AVERIADO" },
       });
 
       const res = await request(app)
         .post(`/api/v1/activos/${activoTestId}/ordenes-trabajo`)
         .set("Authorization", `Bearer ${tokenTecnico}`)
-        .send({ tipo: "PREVENTIVO", descripcion: "No debería poder" });
+        .send({ tipo: "PREVENTIVO", descripcion: "No debería poder", resultadoIntervencion: "OPERATIVO" });
 
       expect(res.status).toBe(422);
     });
@@ -611,6 +613,22 @@ describe("POST /api/v1/activos/:id/ordenes-trabajo", () => {
           descripcion: "NoExiste",
           resultado: "CONFORME",
         });
+      expect(res.status).toBe(400);
+    });
+
+    it("400 si PREVENTIVO sin resultadoIntervencion", async () => {
+      const res = await request(app)
+        .post(`/api/v1/activos/${activoTestId}/ordenes-trabajo`)
+        .set("Authorization", `Bearer ${tokenTecnico}`)
+        .send({ tipo: "PREVENTIVO", descripcion: "Sin desenlace" });
+      expect(res.status).toBe(400);
+    });
+
+    it("400 si CORRECTIVO sin resultadoIntervencion", async () => {
+      const res = await request(app)
+        .post(`/api/v1/activos/${activoTestId}/ordenes-trabajo`)
+        .set("Authorization", `Bearer ${tokenTecnico}`)
+        .send({ tipo: "CORRECTIVO", descripcion: "Sin desenlace" });
       expect(res.status).toBe(400);
     });
 

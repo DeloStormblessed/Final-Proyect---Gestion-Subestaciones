@@ -37,7 +37,7 @@ export const listarOrdenesTrabajo = async (filtros) => {
       orderBy: { fechaIntervencion: "desc" },
       include: {
         activo: {
-          select: { id: true, codigo: true, tipo: true, estado: true },
+          select: { id: true, codigo: true, tipo: true, cicloVida: true, disponibilidad: true },
         },
         autor: {
           // Nunca exponer passwordHash en respuestas. Select explícito de campos seguros.

@@ -1,148 +1,207 @@
 // backend/tests/transiciones.test.js
+// Suite V2 — modelo de dos ejes (cicloVida + disponibilidad).
+// Los tests del modelo de un eje (V1) se reemplazan íntegramente: afirman
+// un contrato de retorno de tipo string que ya no existe.
 
-import { describe, it, expect } from "vitest";
-import { aplicarTransicion } from "../lib/transiciones.js";
-import { ReglaNegocio } from "../lib/errores.js";
+import { describe, it, expect } from 'vitest';
+import { aplicarTransicion } from '../lib/transiciones.js';
+import { ReglaNegocio } from '../lib/errores.js';
 
-describe("aplicarTransicion — transiciones válidas (scope §7 regla A)", () => {
-  describe("desde EN_SERVICIO", () => {
-    it("INSPECCION + OK → EN_SERVICIO (se mantiene en servicio)", () => {
-      expect(aplicarTransicion("EN_SERVICIO", "INSPECCION", "CONFORME")).toBe(
-        "EN_SERVICIO",
-      );
-    });
-    it("INSPECCION + AVERIA_DETECTADA → AVERIADO", () => {
-      expect(
-        aplicarTransicion("EN_SERVICIO", "INSPECCION", "NO_CONFORME"),
-      ).toBe("AVERIADO");
-    });
-    it("PREVENTIVO → FUERA_DE_SERVICIO", () => {
-      expect(aplicarTransicion("EN_SERVICIO", "PREVENTIVO")).toBe(
-        "FUERA_DE_SERVICIO",
-      );
-    });
-    it("CORRECTIVO → FUERA_DE_SERVICIO", () => {
-      expect(aplicarTransicion("EN_SERVICIO", "CORRECTIVO")).toBe(
-        "FUERA_DE_SERVICIO",
-      );
-    });
-    it("BAJA → DADO_DE_BAJA", () => {
-      expect(aplicarTransicion("EN_SERVICIO", "BAJA")).toBe("DADO_DE_BAJA");
-    });
-  });
+// Helpers para construir estados de entrada de forma legible
+const op  = (disp) => ({ cicloVida: 'OPERATIVO',    disponibilidad: disp });
+const baja = (disp) => ({ cicloVida: 'DADO_DE_BAJA', disponibilidad: disp });
 
-  describe("desde AVERIADO", () => {
-    // El resultado de la INSPECCION sobre un averiado no altera el estado:
-    // para recuperarlo hace falta una OT de CORRECTIVO.
-    it("INSPECCION + OK → AVERIADO (sigue averiado)", () => {
-      expect(aplicarTransicion("AVERIADO", "INSPECCION", "CONFORME")).toBe(
-        "AVERIADO",
-      );
+describe('aplicarTransicion — V2 dos ejes', () => {
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Regla A — DADO_DE_BAJA: todas las OTs se rechazan
+  // Un activo retirado está documentado y no vuelve a recibir intervenciones.
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('Regla A — activo DADO_DE_BAJA: todas las OTs se rechazan', () => {
+    it('rechaza INSPECCION sobre DADO_DE_BAJA', () => {
+      expect(() =>
+        aplicarTransicion(baja('EN_SERVICIO'), 'INSPECCION', { resultadoInspeccion: 'CONFORME' })
+      ).toThrow(ReglaNegocio);
     });
-    it("INSPECCION + AVERIA_DETECTADA → AVERIADO", () => {
-      expect(aplicarTransicion("AVERIADO", "INSPECCION", "NO_CONFORME")).toBe(
-        "AVERIADO",
-      );
+    it('rechaza PREVENTIVO sobre DADO_DE_BAJA', () => {
+      expect(() =>
+        aplicarTransicion(baja('EN_SERVICIO'), 'PREVENTIVO', { resultadoIntervencion: 'OPERATIVO' })
+      ).toThrow(ReglaNegocio);
     });
-    it("CORRECTIVO → FUERA_DE_SERVICIO (entra a reparación)", () => {
-      expect(aplicarTransicion("AVERIADO", "CORRECTIVO")).toBe(
-        "FUERA_DE_SERVICIO",
-      );
+    it('rechaza CORRECTIVO sobre DADO_DE_BAJA', () => {
+      expect(() =>
+        aplicarTransicion(baja('AVERIADO'), 'CORRECTIVO', { resultadoIntervencion: 'OPERATIVO' })
+      ).toThrow(ReglaNegocio);
     });
-    it("BAJA → DADO_DE_BAJA", () => {
-      expect(aplicarTransicion("AVERIADO", "BAJA")).toBe("DADO_DE_BAJA");
+    it('rechaza BAJA sobre DADO_DE_BAJA (ya está retirado)', () => {
+      expect(() =>
+        aplicarTransicion(baja('FUERA_DE_SERVICIO'), 'BAJA')
+      ).toThrow(ReglaNegocio);
     });
   });
 
-  describe("desde FUERA_DE_SERVICIO", () => {
-    it("INSPECCION + OK → FUERA_DE_SERVICIO (la inspección no lo reactiva)", () => {
-      expect(
-        aplicarTransicion("FUERA_DE_SERVICIO", "INSPECCION", "CONFORME"),
-      ).toBe("FUERA_DE_SERVICIO");
+  // ─────────────────────────────────────────────────────────────────────────
+  // Regla B — BAJA: cicloVida → DADO_DE_BAJA (terminal); disponibilidad se congela
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('Regla B — BAJA mueve cicloVida y congela disponibilidad', () => {
+    it('desde EN_SERVICIO: cicloVida → DADO_DE_BAJA, disponibilidad = EN_SERVICIO', () => {
+      expect(aplicarTransicion(op('EN_SERVICIO'), 'BAJA'))
+        .toEqual({ cicloVida: 'DADO_DE_BAJA', disponibilidad: 'EN_SERVICIO' });
     });
-    it("CORRECTIVO → EN_SERVICIO (vuelve al servicio tras reparación)", () => {
-      expect(aplicarTransicion("FUERA_DE_SERVICIO", "CORRECTIVO")).toBe(
-        "EN_SERVICIO",
-      );
+    it('desde AVERIADO: cicloVida → DADO_DE_BAJA, disponibilidad = AVERIADO', () => {
+      expect(aplicarTransicion(op('AVERIADO'), 'BAJA'))
+        .toEqual({ cicloVida: 'DADO_DE_BAJA', disponibilidad: 'AVERIADO' });
     });
-    it("BAJA → DADO_DE_BAJA", () => {
-      expect(aplicarTransicion("FUERA_DE_SERVICIO", "BAJA")).toBe(
-        "DADO_DE_BAJA",
-      );
+    it('desde FUERA_DE_SERVICIO: cicloVida → DADO_DE_BAJA, disponibilidad = FUERA_DE_SERVICIO', () => {
+      expect(aplicarTransicion(op('FUERA_DE_SERVICIO'), 'BAJA'))
+        .toEqual({ cicloVida: 'DADO_DE_BAJA', disponibilidad: 'FUERA_DE_SERVICIO' });
     });
   });
 
-  describe("desde DADO_DE_BAJA", () => {
-    it("INSTALACION → EN_SERVICIO (re-puesta en servicio)", () => {
-      expect(aplicarTransicion("DADO_DE_BAJA", "INSTALACION")).toBe(
-        "EN_SERVICIO",
-      );
+  // ─────────────────────────────────────────────────────────────────────────
+  // Regla C — INSPECCION: mueve disponibilidad, nunca cicloVida
+  // Sobre AVERIADO y FUERA_DE_SERVICIO es no-op: diagnostica, no repara.
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('Regla C — INSPECCION', () => {
+    it('EN_SERVICIO + CONFORME → EN_SERVICIO', () => {
+      expect(aplicarTransicion(op('EN_SERVICIO'), 'INSPECCION', { resultadoInspeccion: 'CONFORME' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'EN_SERVICIO' });
+    });
+    it('EN_SERVICIO + NO_CONFORME → AVERIADO', () => {
+      expect(aplicarTransicion(op('EN_SERVICIO'), 'INSPECCION', { resultadoInspeccion: 'NO_CONFORME' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'AVERIADO' });
+    });
+    it('AVERIADO + CONFORME → AVERIADO (no-op: la inspección diagnostica, no repara)', () => {
+      expect(aplicarTransicion(op('AVERIADO'), 'INSPECCION', { resultadoInspeccion: 'CONFORME' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'AVERIADO' });
+    });
+    it('AVERIADO + NO_CONFORME → AVERIADO (no-op)', () => {
+      expect(aplicarTransicion(op('AVERIADO'), 'INSPECCION', { resultadoInspeccion: 'NO_CONFORME' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'AVERIADO' });
+    });
+    it('FUERA_DE_SERVICIO + CONFORME → FUERA_DE_SERVICIO (no-op)', () => {
+      expect(aplicarTransicion(op('FUERA_DE_SERVICIO'), 'INSPECCION', { resultadoInspeccion: 'CONFORME' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'FUERA_DE_SERVICIO' });
+    });
+    it('FUERA_DE_SERVICIO + NO_CONFORME → FUERA_DE_SERVICIO (no-op)', () => {
+      expect(aplicarTransicion(op('FUERA_DE_SERVICIO'), 'INSPECCION', { resultadoInspeccion: 'NO_CONFORME' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'FUERA_DE_SERVICIO' });
+    });
+    it('sin resultadoInspeccion → lanza ReglaNegocio', () => {
+      expect(() => aplicarTransicion(op('EN_SERVICIO'), 'INSPECCION')).toThrow(ReglaNegocio);
+    });
+    it('resultadoInspeccion inválido → lanza ReglaNegocio', () => {
+      expect(() =>
+        aplicarTransicion(op('EN_SERVICIO'), 'INSPECCION', { resultadoInspeccion: 'MAS_O_MENOS' })
+      ).toThrow(ReglaNegocio);
     });
   });
-});
 
-describe("aplicarTransicion — transiciones prohibidas (scope §7 regla A)", () => {
-  it("EN_SERVICIO + INSTALACION → ReglaNegocio (ya está instalado)", () => {
-    expect(() => aplicarTransicion("EN_SERVICIO", "INSTALACION")).toThrow(
-      ReglaNegocio,
-    );
+  // ─────────────────────────────────────────────────────────────────────────
+  // Regla D — PREVENTIVO: requiere ResultadoIntervencion; rechaza AVERIADO
+  // No se hace preventivo a algo ya averiado: requiere correctivo primero (UNE-EN 13306).
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('Regla D — PREVENTIVO', () => {
+    it('EN_SERVICIO + OPERATIVO → EN_SERVICIO', () => {
+      expect(aplicarTransicion(op('EN_SERVICIO'), 'PREVENTIVO', { resultadoIntervencion: 'OPERATIVO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'EN_SERVICIO' });
+    });
+    it('EN_SERVICIO + DEFECTUOSO → AVERIADO (se detectó defecto durante el preventivo)', () => {
+      expect(aplicarTransicion(op('EN_SERVICIO'), 'PREVENTIVO', { resultadoIntervencion: 'DEFECTUOSO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'AVERIADO' });
+    });
+    it('EN_SERVICIO + EN_DESCARGO → FUERA_DE_SERVICIO', () => {
+      expect(aplicarTransicion(op('EN_SERVICIO'), 'PREVENTIVO', { resultadoIntervencion: 'EN_DESCARGO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'FUERA_DE_SERVICIO' });
+    });
+    it('AVERIADO + desenlace válido → lanza ReglaNegocio (preventivo sobre averiado prohibido)', () => {
+      expect(() =>
+        aplicarTransicion(op('AVERIADO'), 'PREVENTIVO', { resultadoIntervencion: 'OPERATIVO' })
+      ).toThrow(ReglaNegocio);
+    });
+    it('FUERA_DE_SERVICIO + OPERATIVO → EN_SERVICIO', () => {
+      expect(aplicarTransicion(op('FUERA_DE_SERVICIO'), 'PREVENTIVO', { resultadoIntervencion: 'OPERATIVO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'EN_SERVICIO' });
+    });
+    it('FUERA_DE_SERVICIO + DEFECTUOSO → AVERIADO', () => {
+      expect(aplicarTransicion(op('FUERA_DE_SERVICIO'), 'PREVENTIVO', { resultadoIntervencion: 'DEFECTUOSO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'AVERIADO' });
+    });
+    it('FUERA_DE_SERVICIO + EN_DESCARGO → FUERA_DE_SERVICIO', () => {
+      expect(aplicarTransicion(op('FUERA_DE_SERVICIO'), 'PREVENTIVO', { resultadoIntervencion: 'EN_DESCARGO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'FUERA_DE_SERVICIO' });
+    });
+    it('sin resultadoIntervencion → lanza ReglaNegocio', () => {
+      expect(() => aplicarTransicion(op('EN_SERVICIO'), 'PREVENTIVO')).toThrow(ReglaNegocio);
+    });
   });
-  it("AVERIADO + PREVENTIVO → ReglaNegocio (no se hace preventivo sobre averiado)", () => {
-    expect(() => aplicarTransicion("AVERIADO", "PREVENTIVO")).toThrow(
-      ReglaNegocio,
-    );
-  });
-  it("AVERIADO + INSTALACION → ReglaNegocio", () => {
-    expect(() => aplicarTransicion("AVERIADO", "INSTALACION")).toThrow(
-      ReglaNegocio,
-    );
-  });
-  it("FUERA_DE_SERVICIO + PREVENTIVO → ReglaNegocio", () => {
-    expect(() => aplicarTransicion("FUERA_DE_SERVICIO", "PREVENTIVO")).toThrow(
-      ReglaNegocio,
-    );
-  });
-  it("FUERA_DE_SERVICIO + INSTALACION → ReglaNegocio", () => {
-    expect(() => aplicarTransicion("FUERA_DE_SERVICIO", "INSTALACION")).toThrow(
-      ReglaNegocio,
-    );
-  });
-  it("DADO_DE_BAJA + INSPECCION → ReglaNegocio (no se inspecciona lo dado de baja)", () => {
-    expect(() =>
-      aplicarTransicion("DADO_DE_BAJA", "INSPECCION", "CONFORME"),
-    ).toThrow(ReglaNegocio);
-  });
-  it("DADO_DE_BAJA + PREVENTIVO → ReglaNegocio", () => {
-    expect(() => aplicarTransicion("DADO_DE_BAJA", "PREVENTIVO")).toThrow(
-      ReglaNegocio,
-    );
-  });
-  it("DADO_DE_BAJA + CORRECTIVO → ReglaNegocio", () => {
-    expect(() => aplicarTransicion("DADO_DE_BAJA", "CORRECTIVO")).toThrow(
-      ReglaNegocio,
-    );
-  });
-  it("DADO_DE_BAJA + BAJA → ReglaNegocio (ya está dado de baja)", () => {
-    expect(() => aplicarTransicion("DADO_DE_BAJA", "BAJA")).toThrow(
-      ReglaNegocio,
-    );
-  });
-});
 
-describe("aplicarTransicion — errores de entrada", () => {
-  it("INSPECCION sin resultadoInspeccion → ReglaNegocio", () => {
-    expect(() => aplicarTransicion("EN_SERVICIO", "INSPECCION")).toThrow(
-      ReglaNegocio,
-    );
+  // ─────────────────────────────────────────────────────────────────────────
+  // Regla E — CORRECTIVO: requiere ResultadoIntervencion; acepta cualquier disponibilidad
+  // El correctivo puede aplicarse independientemente del estado de disponibilidad.
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('Regla E — CORRECTIVO', () => {
+    it('EN_SERVICIO + OPERATIVO → EN_SERVICIO', () => {
+      expect(aplicarTransicion(op('EN_SERVICIO'), 'CORRECTIVO', { resultadoIntervencion: 'OPERATIVO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'EN_SERVICIO' });
+    });
+    it('EN_SERVICIO + DEFECTUOSO → AVERIADO', () => {
+      expect(aplicarTransicion(op('EN_SERVICIO'), 'CORRECTIVO', { resultadoIntervencion: 'DEFECTUOSO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'AVERIADO' });
+    });
+    it('EN_SERVICIO + EN_DESCARGO → FUERA_DE_SERVICIO', () => {
+      expect(aplicarTransicion(op('EN_SERVICIO'), 'CORRECTIVO', { resultadoIntervencion: 'EN_DESCARGO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'FUERA_DE_SERVICIO' });
+    });
+    it('AVERIADO + OPERATIVO → EN_SERVICIO (reposición de servicio)', () => {
+      expect(aplicarTransicion(op('AVERIADO'), 'CORRECTIVO', { resultadoIntervencion: 'OPERATIVO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'EN_SERVICIO' });
+    });
+    it('AVERIADO + DEFECTUOSO → AVERIADO', () => {
+      expect(aplicarTransicion(op('AVERIADO'), 'CORRECTIVO', { resultadoIntervencion: 'DEFECTUOSO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'AVERIADO' });
+    });
+    it('AVERIADO + EN_DESCARGO → FUERA_DE_SERVICIO', () => {
+      expect(aplicarTransicion(op('AVERIADO'), 'CORRECTIVO', { resultadoIntervencion: 'EN_DESCARGO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'FUERA_DE_SERVICIO' });
+    });
+    it('FUERA_DE_SERVICIO + OPERATIVO → EN_SERVICIO', () => {
+      expect(aplicarTransicion(op('FUERA_DE_SERVICIO'), 'CORRECTIVO', { resultadoIntervencion: 'OPERATIVO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'EN_SERVICIO' });
+    });
+    it('FUERA_DE_SERVICIO + DEFECTUOSO → AVERIADO', () => {
+      expect(aplicarTransicion(op('FUERA_DE_SERVICIO'), 'CORRECTIVO', { resultadoIntervencion: 'DEFECTUOSO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'AVERIADO' });
+    });
+    it('FUERA_DE_SERVICIO + EN_DESCARGO → FUERA_DE_SERVICIO', () => {
+      expect(aplicarTransicion(op('FUERA_DE_SERVICIO'), 'CORRECTIVO', { resultadoIntervencion: 'EN_DESCARGO' }))
+        .toEqual({ cicloVida: 'OPERATIVO', disponibilidad: 'FUERA_DE_SERVICIO' });
+    });
+    it('sin resultadoIntervencion → lanza ReglaNegocio', () => {
+      expect(() => aplicarTransicion(op('AVERIADO'), 'CORRECTIVO')).toThrow(ReglaNegocio);
+    });
   });
-  it("INSPECCION con resultadoInspeccion inválido → ReglaNegocio", () => {
-    expect(() =>
-      aplicarTransicion("EN_SERVICIO", "INSPECCION", "MAS_O_MENOS"),
-    ).toThrow(ReglaNegocio);
-  });
-  it("Estado desconocido → ReglaNegocio", () => {
-    expect(() => aplicarTransicion("ESTADO_FANTASMA", "BAJA")).toThrow(
-      ReglaNegocio,
-    );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Errores de entrada — protección contra llamadas malformadas
+  // En producción el enum de Prisma lo blinda; aquí cubrimos tests directos
+  // y posibles datos corruptos en migraciones o seeds.
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('Errores de entrada', () => {
+    it('cicloVida desconocido → lanza ReglaNegocio', () => {
+      expect(() =>
+        aplicarTransicion({ cicloVida: 'FANTASMA', disponibilidad: 'EN_SERVICIO' }, 'BAJA')
+      ).toThrow(ReglaNegocio);
+    });
+    it('disponibilidad desconocida → lanza ReglaNegocio', () => {
+      expect(() =>
+        aplicarTransicion({ cicloVida: 'OPERATIVO', disponibilidad: 'FUNCIONANDO' }, 'BAJA')
+      ).toThrow(ReglaNegocio);
+    });
+    it('tipo de OT desconocido → lanza ReglaNegocio', () => {
+      expect(() =>
+        aplicarTransicion(op('EN_SERVICIO'), 'REVISION_MAGICA')
+      ).toThrow(ReglaNegocio);
+    });
   });
 });

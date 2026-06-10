@@ -19,16 +19,32 @@ enum Rol {
   ADMIN
 }
 
-enum EstadoActivo {
+// V2 — modelo de dos ejes independientes.
+// Eje 1: ciclo de vida del activo (terminal en DADO_DE_BAJA, sin retorno).
+// Eje 2: disponibilidad operativa (solo significativa si cicloVida = OPERATIVO).
+// Separar los ejes permite que el tipo de OT registre QUÉ trabajo se hizo
+// y el ResultadoIntervencion declare en qué CONDICIÓN quedó el equipo.
+
+enum CicloVida {
+  OPERATIVO
+  DADO_DE_BAJA
+}
+
+enum Disponibilidad {
   EN_SERVICIO
   AVERIADO
   // FUERA_DE_SERVICIO: equivalente a "en descargo" en jerga del sector eléctrico
   // (procedimiento formal de retirar un equipo con consignación y puesta a tierra).
-  // Se mantiene el término genérico GMAO por claridad para no-eléctricos.
   FUERA_DE_SERVICIO
-  // DADO_DE_BAJA: equivale al "borrado" para un Activo (no hay DELETE en la API).
-  // Preserva el histórico de OTs asociadas.
-  DADO_DE_BAJA
+}
+
+// Desenlace declarado de una intervención (PREVENTIVO o CORRECTIVO).
+// El técnico indica en qué condición dejó el equipo; la máquina de estados
+// traduce este desenlace al eje de disponibilidad (lib/transiciones.js).
+enum ResultadoIntervencion {
+  OPERATIVO    // equipo queda operativo → disponibilidad EN_SERVICIO
+  DEFECTUOSO   // se detectó defecto durante la intervención → disponibilidad AVERIADO
+  EN_DESCARGO  // queda pendiente de más trabajo → disponibilidad FUERA_DE_SERVICIO
 }
 
 // Tipos de activo del proyecto. La codificación de los `Activo.codigo` (campo del modelo)
@@ -110,11 +126,14 @@ model Activo {
   modelo                  String?
   numeroSerie             String?       @unique
   fechaPuestaEnServicio   DateTime
-  estado                  EstadoActivo  @default(EN_SERVICIO)
+
+  // V2 — dos ejes de estado (reemplaza el campo único `estado: EstadoActivo` de V1).
+  cicloVida               CicloVida      @default(OPERATIVO)
+  disponibilidad          Disponibilidad @default(EN_SERVICIO)
 
   // Se almacena (no se calcula al vuelo) porque se consulta mucho:
   // Regla B (bloqueo de PREVENTIVO si está vencida), dashboard, filtro ?inspeccionVencida=true.
-  // Se recalcula al registrar una INSPECCION con resultado OK,
+  // Se recalcula al registrar una INSPECCION con resultado CONFORME,
   // usando el intervalo de lib/intervalos-inspeccion.js según el TipoActivo.
   fechaProximaInspeccion  DateTime
 
@@ -130,7 +149,8 @@ model Activo {
   etiquetas               Etiqueta[]    @relation("ActivosEtiquetas")
 
   @@index([subestacionId])
-  @@index([estado])
+  @@index([cicloVida])
+  @@index([disponibilidad])
   @@index([fechaProximaInspeccion])     // crítico para el filtro de inspecciones vencidas (Regla B + dashboard)
   @@index([tipo])
   @@map("activos")
@@ -143,13 +163,19 @@ model OrdenTrabajo {
   id                String                @id @default(cuid())
   tipo              TipoOrdenTrabajo
   descripcion       String
-  resultado         ResultadoInspeccion?  // opcional: solo se rellena cuando tipo = INSPECCION
+  resultado              ResultadoInspeccion?   // opcional: solo se rellena cuando tipo = INSPECCION
+  // V2 — desenlace declarado por el técnico para PREVENTIVO y CORRECTIVO.
+  // Determina en qué disponibilidad queda el activo tras la intervención.
+  resultadoIntervencion  ResultadoIntervencion? // null para INSPECCION y BAJA
 
-  // Snapshot del estado del activo antes y después de aplicar la OT.
-  // Permite reconstruir el histórico aunque la matriz de transiciones cambie en el futuro:
-  // la OT antigua sigue siendo consultable y autosuficiente sin volver a ejecutar la lógica.
-  estadoAnterior    EstadoActivo
-  estadoNuevo       EstadoActivo
+  // Snapshot V2 — dos pares de campos (antes/después) para ambos ejes de estado.
+  // Permite reconstruir el histórico aunque la máquina de estados cambie en el futuro.
+  // El par *Anterior es nullable: la OT de INSTALACION no tiene estado previo
+  // (el activo nace en esa OT, no existía antes).
+  cicloVidaAnterior      CicloVida?
+  disponibilidadAnterior Disponibilidad?
+  cicloVidaNueva         CicloVida
+  disponibilidadNueva    Disponibilidad
 
   // Separada de createdAt: la fecha real del trabajo en campo puede no coincidir
   // con la fecha de registro en sistema (técnico que sube los partes por la tarde, etc.).

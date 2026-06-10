@@ -1,90 +1,122 @@
 // backend/lib/transiciones.js
-
-import { ReglaNegocio } from "./errores.js";
-
-// Matriz de transiciones (scope §7 regla A).
-// MATRIZ[estadoActual][tipoOT] = estadoNuevo, o null si la transición está prohibida.
+// Máquina de estados V2 — dos ejes independientes.
+// Eje 1 · cicloVida:      OPERATIVO | DADO_DE_BAJA  (la baja es terminal, sin retorno)
+// Eje 2 · disponibilidad: EN_SERVICIO | AVERIADO | FUERA_DE_SERVICIO
+//                         (solo significativa si cicloVida = OPERATIVO)
 //
-// El caso EN_SERVICIO + INSPECCION queda fuera de la matriz porque depende
-// del resultadoInspeccion (OK → EN_SERVICIO; AVERIA_DETECTADA → AVERIADO).
-// El resto de combinaciones con INSPECCION sí van en la matriz porque ignoran
-// el resultado (un activo AVERIADO sigue AVERIADO se inspeccione como se inspeccione;
-// para repararlo hace falta un CORRECTIVO).
-const MATRIZ = {
-  EN_SERVICIO: {
-    // INSPECCION → tratado aparte (depende de resultadoInspeccion)
-    PREVENTIVO: "FUERA_DE_SERVICIO",
-    CORRECTIVO: "FUERA_DE_SERVICIO",
-    INSTALACION: null,
-    BAJA: "DADO_DE_BAJA",
-  },
-  AVERIADO: {
-    INSPECCION: "AVERIADO",
-    PREVENTIVO: null,
-    CORRECTIVO: "FUERA_DE_SERVICIO",
-    INSTALACION: null,
-    BAJA: "DADO_DE_BAJA",
-  },
-  FUERA_DE_SERVICIO: {
-    INSPECCION: "FUERA_DE_SERVICIO",
-    PREVENTIVO: null,
-    CORRECTIVO: "EN_SERVICIO",
-    INSTALACION: null,
-    BAJA: "DADO_DE_BAJA",
-  },
-  DADO_DE_BAJA: {
-    INSPECCION: null,
-    PREVENTIVO: null,
-    CORRECTIVO: null,
-    INSTALACION: "EN_SERVICIO",
-    BAJA: null,
-  },
+// Separar cicloVida de disponibilidad permite registrar QUÉ trabajo se hizo
+// (tipo de OT) y en QUÉ CONDICIÓN quedó el equipo (desenlace declarado) como
+// dimensiones ortogonales. Reponer un equipo a servicio es el desenlace de la
+// intervención (ResultadoIntervencion.OPERATIVO), no un "correctivo de reposición".
+
+import { ReglaNegocio } from './errores.js';
+
+const CICLO_VIDA_VALIDOS      = new Set(['OPERATIVO', 'DADO_DE_BAJA']);
+const DISPONIBILIDAD_VALIDAS  = new Set(['EN_SERVICIO', 'AVERIADO', 'FUERA_DE_SERVICIO']);
+const RESULTADO_INSPECCION_VALIDOS = new Set(['CONFORME', 'NO_CONFORME']);
+
+// ResultadoIntervencion → disponibilidad resultante.
+// El tipo de OT registra QUÉ se hizo; este mapa traduce el desenlace
+// declarado (OPERATIVO/DEFECTUOSO/EN_DESCARGO) al eje de disponibilidad.
+const DISP_POR_INTERVENCION = {
+  OPERATIVO:   'EN_SERVICIO',
+  DEFECTUOSO:  'AVERIADO',
+  EN_DESCARGO: 'FUERA_DE_SERVICIO',
 };
 
 /**
- * Aplica una transición de estado sobre un activo según la matriz §7 regla A.
+ * Aplica una transición de estado sobre un activo (modelo V2, dos ejes).
  * Función pura: sin BD, sin Express, testeable como módulo aislado.
  *
- * @param {string} estadoActual - Estado actual del activo (EstadoActivo enum).
- * @param {string} tipoOT - Tipo de la OT a registrar (TipoOrdenTrabajo enum).
- * @param {string} [resultadoInspeccion] - 'OK' o 'AVERIA_DETECTADA'. Obligatorio si tipoOT === 'INSPECCION'.
- * @returns {string} El nuevo estado del activo tras aplicar la OT.
- * @throws {ReglaNegocio} Si la transición no está permitida, si una INSPECCION
- *   llega sin resultado válido, o si el estado de partida es desconocido.
+ * INSTALACION no llega aquí: es creación atómica del activo con estado inicial
+ * OPERATIVO/EN_SERVICIO fijado en el service, no una transición sobre un activo existente.
+ *
+ * @param {{ cicloVida: string, disponibilidad: string }} estadoActual
+ * @param {string} tipoOT — 'INSPECCION' | 'PREVENTIVO' | 'CORRECTIVO' | 'BAJA'
+ * @param {{ resultadoInspeccion?: string, resultadoIntervencion?: string }} opts
+ * @returns {{ cicloVida: string, disponibilidad: string }}  estado nuevo (ambos ejes)
+ * @throws {ReglaNegocio}
  */
-export function aplicarTransicion(estadoActual, tipoOT, resultadoInspeccion) {
-  const transicionesDelEstado = MATRIZ[estadoActual];
-  if (!transicionesDelEstado) {
-    // Defensa contra llamadas malformadas (tests directos, datos corruptos).
-    // En producción nunca debería llegar aquí: el enum de Prisma lo blinda.
-    throw new ReglaNegocio(`Estado desconocido: ${estadoActual}`);
+export function aplicarTransicion(estadoActual, tipoOT, { resultadoInspeccion, resultadoIntervencion } = {}) {
+  const { cicloVida, disponibilidad } = estadoActual ?? {};
+
+  // Guard: ejes de entrada deben pertenecer a los enums conocidos.
+  if (!CICLO_VIDA_VALIDOS.has(cicloVida)) {
+    throw new ReglaNegocio(`cicloVida desconocido: ${cicloVida}`);
+  }
+  if (!DISPONIBILIDAD_VALIDAS.has(disponibilidad)) {
+    throw new ReglaNegocio(`disponibilidad desconocida: ${disponibilidad}`);
   }
 
-  // Caso especial: la INSPECCION exige siempre indicar el resultado, incluso
-  // cuando el resultado no cambia el estado. Una OT de inspección sin
-  // veredicto no tiene sentido semántico ni se puede asentar en el histórico.
-  if (tipoOT === "INSPECCION") {
-    if (
-      resultadoInspeccion !== "CONFORME" &&
-      resultadoInspeccion !== "NO_CONFORME"
-    ) {
-      throw new ReglaNegocio(
-        "Una OT de tipo INSPECCION requiere indicar resultadoInspeccion (OK o AVERIA_DETECTADA)",
-      );
-    }
-    // El único estado donde el resultado modifica la transición:
-    if (estadoActual === "EN_SERVICIO") {
-      return resultadoInspeccion === "CONFORME" ? "EN_SERVICIO" : "AVERIADO";
-    }
-    // Para AVERIADO y FUERA_DE_SERVICIO la INSPECCION es no-op; para DADO_DE_BAJA
-    // está prohibida. Ambos casos los resuelve la matriz unas líneas más abajo.
-  }
-
-  const estadoNuevo = transicionesDelEstado[tipoOT];
-  if (estadoNuevo === null || estadoNuevo === undefined) {
+  // Regla A — activo DADO_DE_BAJA: ninguna OT de mantenimiento es válida.
+  // Un activo retirado está documentado y no vuelve a recibir intervenciones.
+  if (cicloVida === 'DADO_DE_BAJA') {
     throw new ReglaNegocio(
-      `Transición no permitida: no se puede aplicar una OT de tipo ${tipoOT} a un activo en estado ${estadoActual}`,
+      `Transición no permitida: el activo está DADO_DE_BAJA y no admite OTs de tipo ${tipoOT}`,
     );
   }
-  return estadoNuevo;
+
+  // A partir de aquí, cicloVida === 'OPERATIVO' en todos los casos.
+
+  switch (tipoOT) {
+    // Regla B — BAJA: mueve cicloVida → DADO_DE_BAJA (terminal).
+    // No toca el eje de disponibilidad: se congela en su último valor registrado.
+    case 'BAJA':
+      return { cicloVida: 'DADO_DE_BAJA', disponibilidad };
+
+    // Regla C — INSPECCION: solo mueve disponibilidad, nunca cicloVida.
+    // Sobre AVERIADO y FUERA_DE_SERVICIO es un no-op de estado (diagnostica, no repara).
+    // La OT se registra igualmente como evidencia documental de la inspección realizada.
+    case 'INSPECCION': {
+      if (!RESULTADO_INSPECCION_VALIDOS.has(resultadoInspeccion)) {
+        throw new ReglaNegocio(
+          'Una OT de tipo INSPECCION requiere indicar resultadoInspeccion (CONFORME o NO_CONFORME)',
+        );
+      }
+      if (disponibilidad === 'EN_SERVICIO') {
+        // Solo desde EN_SERVICIO el resultado puede degradar la disponibilidad.
+        // El recálculo de fechaProximaInspeccion cuando CONFORME lo hace el service.
+        return {
+          cicloVida,
+          disponibilidad: resultadoInspeccion === 'CONFORME' ? 'EN_SERVICIO' : 'AVERIADO',
+        };
+      }
+      // AVERIADO o FUERA_DE_SERVICIO: no-op (el resultado no cambia la disponibilidad).
+      return { cicloVida, disponibilidad };
+    }
+
+    // Regla D — PREVENTIVO: lleva ResultadoIntervencion obligatorio.
+    // Se rechaza sobre AVERIADO: un equipo con avería confirmada requiere correctivo
+    // primero; aplicar preventivo sería documentalmente incorrecto (UNE-EN 13306).
+    case 'PREVENTIVO': {
+      if (disponibilidad === 'AVERIADO') {
+        throw new ReglaNegocio(
+          'Transición no permitida: no se puede aplicar PREVENTIVO a un activo AVERIADO',
+        );
+      }
+      const nuevaDisp = DISP_POR_INTERVENCION[resultadoIntervencion];
+      if (!nuevaDisp) {
+        throw new ReglaNegocio(
+          'Una OT de tipo PREVENTIVO requiere indicar resultadoIntervencion (OPERATIVO, DEFECTUOSO o EN_DESCARGO)',
+        );
+      }
+      return { cicloVida, disponibilidad: nuevaDisp };
+    }
+
+    // Regla E — CORRECTIVO: lleva ResultadoIntervencion obligatorio.
+    // Acepta cualquier disponibilidad: la intervención correctiva se aplica tanto a
+    // averiados como a equipos en descargo o incluso en servicio (mantenimiento curativo).
+    case 'CORRECTIVO': {
+      const nuevaDisp = DISP_POR_INTERVENCION[resultadoIntervencion];
+      if (!nuevaDisp) {
+        throw new ReglaNegocio(
+          'Una OT de tipo CORRECTIVO requiere indicar resultadoIntervencion (OPERATIVO, DEFECTUOSO o EN_DESCARGO)',
+        );
+      }
+      return { cicloVida, disponibilidad: nuevaDisp };
+    }
+
+    default:
+      throw new ReglaNegocio(`Tipo de OT desconocido: ${tipoOT}`);
+  }
 }

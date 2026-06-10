@@ -28,7 +28,8 @@ export async function listarActivos(filtros) {
     limite,
     subestacionId,
     tipo,
-    estado,
+    cicloVida,
+    disponibilidad,
     etiqueta,
     busqueda,
     inspeccionVencida,
@@ -39,7 +40,8 @@ export async function listarActivos(filtros) {
   const where = {
     ...(subestacionId && { subestacionId }),
     ...(tipo && { tipo }),
-    ...(estado && { estado }),
+    ...(cicloVida && { cicloVida }),
+    ...(disponibilidad && { disponibilidad }),
     // Filtro por nombre de etiqueta vía relación M:N (el id interno no se expone).
     ...(etiqueta && { etiquetas: { some: { nombre: etiqueta } } }),
     // Inspección vencida: fechaProximaInspeccion en el pasado. Si el flag es
@@ -149,16 +151,17 @@ export async function crearActivo(datos, autorId) {
       },
     });
 
-    // OT INSTALACION inicial. estadoAnterior = DADO_DE_BAJA es una convención
-    // documentada en el scope: la matriz de transiciones modela INSTALACION
-    // como DADO_DE_BAJA -> EN_SERVICIO, y respetamos esa semántica también
-    // para el alta inicial para que la matriz sea la única fuente de verdad.
+    // OT INSTALACION inicial. El activo no existía antes: *Anterior = null.
+    // Estado de nacimiento fijo: OPERATIVO/EN_SERVICIO (no pasa por aplicarTransicion,
+    // que solo maneja transiciones sobre activos ya existentes).
     await tx.ordenTrabajo.create({
       data: {
         tipo: "INSTALACION",
         descripcion: `Puesta en servicio del activo ${codigo}`,
-        estadoAnterior: "DADO_DE_BAJA",
-        estadoNuevo: "EN_SERVICIO",
+        cicloVidaAnterior: null,
+        disponibilidadAnterior: null,
+        cicloVidaNueva: "OPERATIVO",
+        disponibilidadNueva: "EN_SERVICIO",
         activoId: nuevoActivo.id,
         autorId,
       },
@@ -233,17 +236,18 @@ export async function listarHistorialActivo(activoId, paginacion) {
 //  - Recálculo de fechaProximaInspeccion en INSPECCION con resultado OK.
 //  - Webhook DESPUÉS del commit en eventos críticos (scope §8).
 export async function registrarOrdenTrabajo({ activoId, autorId, datos }) {
-  const { tipo, descripcion, resultado, fechaIntervencion } = datos;
+  const { tipo, descripcion, resultado, resultadoIntervencion, fechaIntervencion } = datos;
 
   // Carga previa: necesitamos tipo (para intervalo de inspección),
-  // estado actual (para regla A) y fechaProximaInspeccion (para regla B).
+  // estado actual (para regla A, ambos ejes V2) y fechaProximaInspeccion (para regla B).
   const activo = await prisma.activo.findUnique({
     where: { id: activoId },
     select: {
       id: true,
       codigo: true,
       tipo: true,
-      estado: true,
+      cicloVida: true,
+      disponibilidad: true,
       fechaProximaInspeccion: true,
       // Subestación incluida para enriquecer el payload del webhook (scope §8).
       subestacion: {
@@ -269,13 +273,14 @@ export async function registrarOrdenTrabajo({ activoId, autorId, datos }) {
   // deben ser atómicos. Si la transición es inválida, lanzamos
   // ReglaNegocio y Prisma hace rollback automático.
   const otCreada = await prisma.$transaction(async (tx) => {
-    // aplicarTransicion es función pura: sin BD, sin Express.
-    // Devuelve { estadoNuevo } o { error }.
-    // aplicarTransicion es función pura (scope §7 regla A): devuelve
-    // directamente el estadoNuevo o lanza ReglaNegocio si la celda
-    // de la matriz es prohibida. Si lanza dentro de $transaction,
-    // Prisma hace rollback automático.
-    const estadoNuevo = aplicarTransicion(activo.estado, tipo, resultado);
+    // aplicarTransicion es función pura (lib/transiciones.js): sin BD, sin Express.
+    // Recibe los dos ejes del estado actual + tipo + desenlaces declarados.
+    // Lanza ReglaNegocio si la transición está prohibida → Prisma hace rollback automático.
+    const nuevoEstado = aplicarTransicion(
+      { cicloVida: activo.cicloVida, disponibilidad: activo.disponibilidad },
+      tipo,
+      { resultadoInspeccion: resultado, resultadoIntervencion },
+    );
 
     // Recálculo de fechaProximaInspeccion: solo cuando una INSPECCION
     // termina OK. Si AVERIA_DETECTADA, el activo pasa a AVERIADO y la
@@ -286,7 +291,7 @@ export async function registrarOrdenTrabajo({ activoId, autorId, datos }) {
         ? calcularProximaInspeccion(new Date(), activo.tipo)
         : null;
 
-    // Crear la OT con snapshot del estado antes/después.
+    // Crear la OT con snapshot de los dos ejes antes/después.
     // El snapshot hace al histórico autosuficiente: si mañana cambia
     // la matriz de transiciones, las OTs antiguas siguen siendo
     // consultables sin reproducir la lógica vigente.
@@ -295,8 +300,11 @@ export async function registrarOrdenTrabajo({ activoId, autorId, datos }) {
         tipo,
         descripcion,
         resultado: resultado ?? null,
-        estadoAnterior: activo.estado,
-        estadoNuevo,
+        resultadoIntervencion: resultadoIntervencion ?? null,
+        cicloVidaAnterior: activo.cicloVida,
+        disponibilidadAnterior: activo.disponibilidad,
+        cicloVidaNueva: nuevoEstado.cicloVida,
+        disponibilidadNueva: nuevoEstado.disponibilidad,
         // Si no viene en el body, Prisma usa @default(now()).
         ...(fechaIntervencion && { fechaIntervencion }),
         activoId: activo.id,
@@ -307,12 +315,13 @@ export async function registrarOrdenTrabajo({ activoId, autorId, datos }) {
       },
     });
 
-    // Actualizar el activo: estado siempre, fechaProximaInspeccion solo
+    // Actualizar el activo: ambos ejes siempre, fechaProximaInspeccion solo
     // si toca recalcularla. Si no toca, no la pisamos.
     await tx.activo.update({
       where: { id: activo.id },
       data: {
-        estado: estadoNuevo,
+        cicloVida: nuevoEstado.cicloVida,
+        disponibilidad: nuevoEstado.disponibilidad,
         ...(nuevaFechaInspeccion && {
           fechaProximaInspeccion: nuevaFechaInspeccion,
         }),
@@ -337,8 +346,10 @@ export async function registrarOrdenTrabajo({ activoId, autorId, datos }) {
         id: activo.id,
         codigo: activo.codigo,
         tipo: activo.tipo,
-        estadoAnterior: otCreada.estadoAnterior,
-        estadoNuevo: otCreada.estadoNuevo,
+        cicloVidaAnterior: otCreada.cicloVidaAnterior,
+        disponibilidadAnterior: otCreada.disponibilidadAnterior,
+        cicloVidaNueva: otCreada.cicloVidaNueva,
+        disponibilidadNueva: otCreada.disponibilidadNueva,
       },
       subestacion: {
         id: activo.subestacion.id,

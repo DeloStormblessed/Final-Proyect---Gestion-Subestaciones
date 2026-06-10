@@ -164,7 +164,7 @@ async function crearActivoConInstalacion(datos, autorId) {
       numeroSerie,
       fechaPuestaEnServicio,
       fechaProximaInspeccion,
-      estado: "EN_SERVICIO", // arranca siempre EN_SERVICIO; OTs posteriores lo moverán
+      // cicloVida y disponibilidad usan los defaults de Prisma (OPERATIVO/EN_SERVICIO)
       subestacionId,
     },
   });
@@ -173,8 +173,11 @@ async function crearActivoConInstalacion(datos, autorId) {
     data: {
       tipo: "INSTALACION",
       descripcion: `Puesta en servicio de ${codigo}`,
-      estadoAnterior: "DADO_DE_BAJA",
-      estadoNuevo: "EN_SERVICIO",
+      // El activo no existía antes: *Anterior = null (V2)
+      cicloVidaAnterior: null,
+      disponibilidadAnterior: null,
+      cicloVidaNueva: "OPERATIVO",
+      disponibilidadNueva: "EN_SERVICIO",
       fechaIntervencion: fechaPuestaEnServicio,
       createdAt: fechaPuestaEnServicio,
       activoId: activo.id,
@@ -361,7 +364,7 @@ async function crearActivos(usuarios, subs) {
   );
   await prisma.activo.update({
     where: { id: ac12.id },
-    data: { estado: "AVERIADO" },
+    data: { disponibilidad: "AVERIADO" },
   });
 
   const ac13 = await crearActivoConInstalacion(
@@ -378,7 +381,7 @@ async function crearActivos(usuarios, subs) {
   );
   await prisma.activo.update({
     where: { id: ac13.id },
-    data: { estado: "AVERIADO" },
+    data: { disponibilidad: "AVERIADO" },
   });
 
   // --- FUERA_DE_SERVICIO (2 activos) ---
@@ -397,7 +400,7 @@ async function crearActivos(usuarios, subs) {
   );
   await prisma.activo.update({
     where: { id: ac14.id },
-    data: { estado: "FUERA_DE_SERVICIO" },
+    data: { disponibilidad: "FUERA_DE_SERVICIO" },
   });
 
   const ac15 = await crearActivoConInstalacion(
@@ -414,7 +417,7 @@ async function crearActivos(usuarios, subs) {
   );
   await prisma.activo.update({
     where: { id: ac15.id },
-    data: { estado: "FUERA_DE_SERVICIO" },
+    data: { disponibilidad: "FUERA_DE_SERVICIO" },
   });
 
   // --- DADO_DE_BAJA (3 activos). AC-018 (TT-NORTE-01) tiene además inspección vencida:
@@ -433,7 +436,7 @@ async function crearActivos(usuarios, subs) {
   );
   await prisma.activo.update({
     where: { id: ac16.id },
-    data: { estado: "DADO_DE_BAJA" },
+    data: { cicloVida: "DADO_DE_BAJA" },
   });
 
   const ac17 = await crearActivoConInstalacion(
@@ -450,7 +453,7 @@ async function crearActivos(usuarios, subs) {
   );
   await prisma.activo.update({
     where: { id: ac17.id },
-    data: { estado: "DADO_DE_BAJA" },
+    data: { cicloVida: "DADO_DE_BAJA" },
   });
 
   const ac18 = await crearActivoConInstalacion(
@@ -467,7 +470,7 @@ async function crearActivos(usuarios, subs) {
   );
   await prisma.activo.update({
     where: { id: ac18.id },
-    data: { estado: "DADO_DE_BAJA", fechaProximaInspeccion: enDias(-50) },
+    data: { cicloVida: "DADO_DE_BAJA", fechaProximaInspeccion: enDias(-50) },
   });
 
   return {
@@ -508,8 +511,10 @@ async function crearOtsAdicionales(activos, usuarios) {
     tipo: "INSPECCION",
     resultado: "CONFORME",
     descripcion: "Inspección rutinaria trimestral",
-    estadoAnterior: "EN_SERVICIO",
-    estadoNuevo: "EN_SERVICIO",
+    cicloVidaAnterior: "OPERATIVO",
+    disponibilidadAnterior: "EN_SERVICIO",
+    cicloVidaNueva: "OPERATIVO",
+    disponibilidadNueva: "EN_SERVICIO",
     createdAt: enDias(-7),
     activoId: activos.ac01.id,
     autorId: usuarios.operario1.id,
@@ -518,8 +523,10 @@ async function crearOtsAdicionales(activos, usuarios) {
     tipo: "INSPECCION",
     resultado: "CONFORME",
     descripcion: "Inspección rutinaria",
-    estadoAnterior: "EN_SERVICIO",
-    estadoNuevo: "EN_SERVICIO",
+    cicloVidaAnterior: "OPERATIVO",
+    disponibilidadAnterior: "EN_SERVICIO",
+    cicloVidaNueva: "OPERATIVO",
+    disponibilidadNueva: "EN_SERVICIO",
     createdAt: enDias(-12),
     activoId: activos.ac03.id,
     autorId: usuarios.operario2.id,
@@ -528,8 +535,10 @@ async function crearOtsAdicionales(activos, usuarios) {
     tipo: "INSPECCION",
     resultado: "CONFORME",
     descripcion: "Inspección post-mantenimiento",
-    estadoAnterior: "EN_SERVICIO",
-    estadoNuevo: "EN_SERVICIO",
+    cicloVidaAnterior: "OPERATIVO",
+    disponibilidadAnterior: "EN_SERVICIO",
+    cicloVidaNueva: "OPERATIVO",
+    disponibilidadNueva: "EN_SERVICIO",
     createdAt: enDias(-3),
     activoId: activos.ac06.id,
     autorId: usuarios.operario1.id,
@@ -538,8 +547,10 @@ async function crearOtsAdicionales(activos, usuarios) {
     tipo: "INSPECCION",
     resultado: "CONFORME",
     descripcion: "Inspección rutinaria",
-    estadoAnterior: "EN_SERVICIO",
-    estadoNuevo: "EN_SERVICIO",
+    cicloVidaAnterior: "OPERATIVO",
+    disponibilidadAnterior: "EN_SERVICIO",
+    cicloVidaNueva: "OPERATIVO",
+    disponibilidadNueva: "EN_SERVICIO",
     createdAt: enDias(-20),
     activoId: activos.ac08.id,
     autorId: usuarios.tecnico2.id,
@@ -552,8 +563,11 @@ async function crearOtsAdicionales(activos, usuarios) {
     tipo: "PREVENTIVO",
     descripcion:
       "Mantenimiento preventivo programado: cambio de aceite y filtros",
-    estadoAnterior: "EN_SERVICIO",
-    estadoNuevo: "FUERA_DE_SERVICIO",
+    resultadoIntervencion: "EN_DESCARGO",
+    cicloVidaAnterior: "OPERATIVO",
+    disponibilidadAnterior: "EN_SERVICIO",
+    cicloVidaNueva: "OPERATIVO",
+    disponibilidadNueva: "FUERA_DE_SERVICIO",
     createdAt: enDias(-10),
     activoId: activos.ac14.id,
     autorId: usuarios.tecnico1.id,
@@ -566,8 +580,10 @@ async function crearOtsAdicionales(activos, usuarios) {
     tipo: "INSPECCION",
     resultado: "NO_CONFORME",
     descripcion: "Fuga de aceite detectada en arqueta inferior",
-    estadoAnterior: "EN_SERVICIO",
-    estadoNuevo: "AVERIADO",
+    cicloVidaAnterior: "OPERATIVO",
+    disponibilidadAnterior: "EN_SERVICIO",
+    cicloVidaNueva: "OPERATIVO",
+    disponibilidadNueva: "AVERIADO",
     createdAt: enDias(-8),
     activoId: activos.ac15.id,
     autorId: usuarios.operario2.id,
@@ -576,8 +592,11 @@ async function crearOtsAdicionales(activos, usuarios) {
   await crearOT({
     tipo: "CORRECTIVO",
     descripcion: "Reparación de junta inferior y reposición de aceite",
-    estadoAnterior: "AVERIADO",
-    estadoNuevo: "FUERA_DE_SERVICIO",
+    resultadoIntervencion: "EN_DESCARGO",
+    cicloVidaAnterior: "OPERATIVO",
+    disponibilidadAnterior: "AVERIADO",
+    cicloVidaNueva: "OPERATIVO",
+    disponibilidadNueva: "FUERA_DE_SERVICIO",
     createdAt: enDias(-3),
     activoId: activos.ac15.id,
     autorId: usuarios.tecnico2.id,
@@ -588,8 +607,10 @@ async function crearOtsAdicionales(activos, usuarios) {
     tipo: "INSPECCION",
     resultado: "NO_CONFORME",
     descripcion: "Anomalía térmica detectada en bobinado primario",
-    estadoAnterior: "EN_SERVICIO",
-    estadoNuevo: "AVERIADO",
+    cicloVidaAnterior: "OPERATIVO",
+    disponibilidadAnterior: "EN_SERVICIO",
+    cicloVidaNueva: "OPERATIVO",
+    disponibilidadNueva: "AVERIADO",
     createdAt: enDias(-5),
     activoId: activos.ac12.id,
     autorId: usuarios.operario1.id,
@@ -598,8 +619,10 @@ async function crearOtsAdicionales(activos, usuarios) {
     tipo: "INSPECCION",
     resultado: "NO_CONFORME",
     descripcion: "Pararrayos fracturado por descarga atmosférica",
-    estadoAnterior: "EN_SERVICIO",
-    estadoNuevo: "AVERIADO",
+    cicloVidaAnterior: "OPERATIVO",
+    disponibilidadAnterior: "EN_SERVICIO",
+    cicloVidaNueva: "OPERATIVO",
+    disponibilidadNueva: "AVERIADO",
     createdAt: enDias(-15),
     activoId: activos.ac13.id,
     autorId: usuarios.tecnico2.id,
@@ -611,8 +634,10 @@ async function crearOtsAdicionales(activos, usuarios) {
   await crearOT({
     tipo: "BAJA",
     descripcion: "Retirada por fin de vida útil",
-    estadoAnterior: "EN_SERVICIO",
-    estadoNuevo: "DADO_DE_BAJA",
+    cicloVidaAnterior: "OPERATIVO",
+    disponibilidadAnterior: "EN_SERVICIO",
+    cicloVidaNueva: "DADO_DE_BAJA",
+    disponibilidadNueva: "EN_SERVICIO", // disponibilidad congelada en su último valor
     createdAt: enDias(-60),
     activoId: activos.ac16.id,
     autorId: usuarios.admin.id,
@@ -620,8 +645,10 @@ async function crearOtsAdicionales(activos, usuarios) {
   await crearOT({
     tipo: "BAJA",
     descripcion: "Sustituido por modelo nuevo de mayor capacidad",
-    estadoAnterior: "EN_SERVICIO",
-    estadoNuevo: "DADO_DE_BAJA",
+    cicloVidaAnterior: "OPERATIVO",
+    disponibilidadAnterior: "EN_SERVICIO",
+    cicloVidaNueva: "DADO_DE_BAJA",
+    disponibilidadNueva: "EN_SERVICIO",
     createdAt: enDias(-25),
     activoId: activos.ac17.id,
     autorId: usuarios.admin.id,
@@ -629,8 +656,10 @@ async function crearOtsAdicionales(activos, usuarios) {
   await crearOT({
     tipo: "BAJA",
     descripcion: "Daños irreparables por sobretensión",
-    estadoAnterior: "AVERIADO",
-    estadoNuevo: "DADO_DE_BAJA",
+    cicloVidaAnterior: "OPERATIVO",
+    disponibilidadAnterior: "AVERIADO",
+    cicloVidaNueva: "DADO_DE_BAJA",
+    disponibilidadNueva: "AVERIADO", // disponibilidad congelada
     createdAt: enDias(-10),
     activoId: activos.ac18.id,
     autorId: usuarios.tecnico1.id,
@@ -644,8 +673,10 @@ async function crearOtsAdicionales(activos, usuarios) {
     tipo: "INSPECCION",
     resultado: "CONFORME",
     descripcion: "Inspección anterior",
-    estadoAnterior: "EN_SERVICIO",
-    estadoNuevo: "EN_SERVICIO",
+    cicloVidaAnterior: "OPERATIVO",
+    disponibilidadAnterior: "EN_SERVICIO",
+    cicloVidaNueva: "OPERATIVO",
+    disponibilidadNueva: "EN_SERVICIO",
     createdAt: enDias(-45),
     activoId: activos.ac01.id,
     autorId: usuarios.operario1.id,

@@ -13,12 +13,6 @@ const TIPOS_ACTIVO = [
   "BATERIA_CONDENSADORES",
 ];
 
-const ESTADOS_ACTIVO = [
-  "EN_SERVICIO",
-  "AVERIADO",
-  "FUERA_DE_SERVICIO",
-  "DADO_DE_BAJA",
-];
 
 export const crearActivoSchema = z.object({
   codigo: z
@@ -62,7 +56,9 @@ export const filtrosListadoActivosSchema = z.object({
   // Filtros de dominio
   subestacionId: z.string().optional(),
   tipo: z.enum(TIPOS_ACTIVO).optional(),
-  estado: z.enum(ESTADOS_ACTIVO).optional(),
+  // V2 — dos ejes de estado en lugar del campo único `estado`
+  cicloVida: z.enum(["OPERATIVO", "DADO_DE_BAJA"]).optional(),
+  disponibilidad: z.enum(["EN_SERVICIO", "AVERIADO", "FUERA_DE_SERVICIO"]).optional(),
   etiqueta: z.string().optional(), // por nombre, no por id
 
   // Búsqueda textual sobre codigo, fabricante, modelo y numeroSerie.
@@ -97,11 +93,14 @@ export const crearOrdenTrabajoSchema = z
       .min(3, "La descripción debe tener al menos 3 caracteres")
       .max(1000, "La descripción no puede superar los 1000 caracteres"),
     resultado: z.enum(["CONFORME", "NO_CONFORME"]).optional(),
+    // V2 — desenlace declarado por el técnico para PREVENTIVO y CORRECTIVO.
+    resultadoIntervencion: z.enum(["OPERATIVO", "DEFECTUOSO", "EN_DESCARGO"]).optional(),
     // Opcional: si no viene, Prisma usa @default(now()).
     // Coerce permite recibir string ISO desde JSON y convertirlo a Date.
     fechaIntervencion: z.coerce.date().optional(),
   })
   .superRefine((data, ctx) => {
+    // Regla cruzada 1: INSPECCION requiere resultado (ResultadoInspeccion)
     if (data.tipo === "INSPECCION" && !data.resultado) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -109,11 +108,28 @@ export const crearOrdenTrabajoSchema = z
         message: "El resultado es obligatorio para OTs de tipo INSPECCION",
       });
     }
+    // Regla cruzada 2: otros tipos no pueden llevar resultado
     if (data.tipo !== "INSPECCION" && data.resultado !== undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["resultado"],
         message: "El campo resultado solo aplica a OTs de tipo INSPECCION",
+      });
+    }
+    // Regla cruzada 3: PREVENTIVO y CORRECTIVO requieren resultadoIntervencion
+    if (["PREVENTIVO", "CORRECTIVO"].includes(data.tipo) && !data.resultadoIntervencion) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["resultadoIntervencion"],
+        message: "El resultadoIntervencion es obligatorio para OTs de tipo PREVENTIVO y CORRECTIVO",
+      });
+    }
+    // Regla cruzada 4: otros tipos no pueden llevar resultadoIntervencion
+    if (!["PREVENTIVO", "CORRECTIVO"].includes(data.tipo) && data.resultadoIntervencion !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["resultadoIntervencion"],
+        message: "El campo resultadoIntervencion solo aplica a OTs de tipo PREVENTIVO y CORRECTIVO",
       });
     }
   });

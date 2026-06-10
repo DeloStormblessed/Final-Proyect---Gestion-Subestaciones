@@ -50,7 +50,8 @@ export async function obtenerSubestacion(id) {
           id: true,
           codigo: true,
           tipo: true,
-          estado: true,
+          cicloVida: true,
+          disponibilidad: true,
           fechaProximaInspeccion: true,
         },
         orderBy: { codigo: "asc" },
@@ -99,7 +100,7 @@ export async function cambiarActivacion(id, activa) {
     const activosVivos = await prisma.activo.count({
       where: {
         subestacionId: id,
-        estado: { not: "DADO_DE_BAJA" },
+        cicloVida: "OPERATIVO",
       },
     });
     if (activosVivos > 0) {
