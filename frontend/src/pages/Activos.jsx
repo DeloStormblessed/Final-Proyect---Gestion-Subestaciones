@@ -5,10 +5,12 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../lib/apiNode.js';
 import EstadoBadge from '../components/EstadoBadge.jsx';
 import ModalNuevaOT from '../components/ModalNuevaOT.jsx';
+import { estadoVisual } from '../lib/estadoVisual.js';
 
 const C = { primario: '#A4C63A', gris: '#9AA0A6' };
 
-const ESTADOS_ACTIVO = ['EN_SERVICIO', 'AVERIADO', 'FUERA_DE_SERVICIO', 'DADO_DE_BAJA'];
+// Solo los tres valores de disponibilidad — DADO_DE_BAJA lo gestiona el checkbox en cliente
+const DISPONIBILIDADES = ['EN_SERVICIO', 'AVERIADO', 'FUERA_DE_SERVICIO'];
 const TIPOS_ACTIVO = [
   'TRANSFORMADOR_POTENCIA', 'INTERRUPTOR_AUTOMATICO', 'SECCIONADOR',
   'PARARRAYOS', 'TRANSFORMADOR_MEDIDA', 'BATERIA_CONDENSADORES',
@@ -18,7 +20,6 @@ const ETIQUETA_ESTADO = {
   EN_SERVICIO:       'En servicio',
   AVERIADO:          'Averiado',
   FUERA_DE_SERVICIO: 'Fuera de servicio',
-  DADO_DE_BAJA:      'Dado de baja',
 };
 
 const ETIQUETA_TIPO = {
@@ -35,7 +36,7 @@ const ETIQUETA_TIPO = {
 const ORDEN_ESTADO = { AVERIADO: 0, FUERA_DE_SERVICIO: 1, EN_SERVICIO: 2, DADO_DE_BAJA: 3 };
 
 function sortByCriticidad(a, b) {
-  const dif = (ORDEN_ESTADO[a.estado] ?? 99) - (ORDEN_ESTADO[b.estado] ?? 99);
+  const dif = (ORDEN_ESTADO[estadoVisual(a)] ?? 99) - (ORDEN_ESTADO[estadoVisual(b)] ?? 99);
   if (dif !== 0) return dif;
   // Secundario: fecha de próxima inspección ascendente (la más urgente primero; null al final)
   const fa = a.fechaProximaInspeccion ? new Date(a.fechaProximaInspeccion).getTime() : Infinity;
@@ -170,7 +171,7 @@ export default function Activos() {
   const [mostrarDadosDeBaja, setMostrarDadosDeBaja] = useState(false);
 
   // Filtros
-  const [estado, setEstado] = useState('');
+  const [disponibilidad, setDisponibilidad] = useState('');
   const [tipo, setTipo] = useState('');
   const [busqueda, setBusqueda] = useState('');
   const [busquedaInput, setBusquedaInput] = useState('');
@@ -206,7 +207,7 @@ export default function Activos() {
     setCargando(true);
     setError('');
     const params = new URLSearchParams({ pagina, limite: 20 });
-    if (estado) params.set('estado', estado);
+    if (disponibilidad) params.set('disponibilidad', disponibilidad);
     if (tipo) params.set('tipo', tipo);
     if (busqueda) params.set('busqueda', busqueda);
     if (inspeccionVencida) params.set('inspeccionVencida', 'true');
@@ -219,7 +220,7 @@ export default function Activos() {
       })
       .catch(err => setError(err.message))
       .finally(() => setCargando(false));
-  }, [token, pagina, estado, tipo, busqueda, inspeccionVencida, subestacionId]);
+  }, [token, pagina, disponibilidad, tipo, busqueda, inspeccionVencida, subestacionId]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -230,10 +231,10 @@ export default function Activos() {
   // • sortByCriticidad: AVERIADO → FUERA_DE_SERVICIO → EN_SERVICIO → DADO_DE_BAJA,
   //   con fechaProximaInspeccion ascendente como desempate.
   const activosVisibles = [...activos]
-    .filter(a => mostrarDadosDeBaja ? a.estado === 'DADO_DE_BAJA' : a.estado !== 'DADO_DE_BAJA')
+    .filter(a => mostrarDadosDeBaja ? estadoVisual(a) === 'DADO_DE_BAJA' : estadoVisual(a) !== 'DADO_DE_BAJA')
     .sort(sortByCriticidad);
 
-  const filtroActivo = !!(estado || tipo || busquedaInput || inspeccionVencida || subestacionId || mostrarDadosDeBaja);
+  const filtroActivo = !!(disponibilidad || tipo || busquedaInput || inspeccionVencida || subestacionId || mostrarDadosDeBaja);
 
   return (
     <div>
@@ -267,9 +268,9 @@ export default function Activos() {
           />
         </div>
 
-        <select className="filtro-input" value={estado} onChange={e => { setEstado(e.target.value); setPagina(1); }}>
-          <option value="">Todos los estados</option>
-          {ESTADOS_ACTIVO.map(e => <option key={e} value={e}>{ETIQUETA_ESTADO[e]}</option>)}
+        <select className="filtro-input" value={disponibilidad} onChange={e => { setDisponibilidad(e.target.value); setPagina(1); }}>
+          <option value="">Todas las disponibilidades</option>
+          {DISPONIBILIDADES.map(d => <option key={d} value={d}>{ETIQUETA_ESTADO[d]}</option>)}
         </select>
 
         <select className="filtro-input" value={tipo} onChange={e => { setTipo(e.target.value); setPagina(1); }}>
@@ -299,7 +300,7 @@ export default function Activos() {
           type="button"
           className="btn-secundario"
           style={{ marginLeft: 'auto', padding: '0.45rem 1rem', fontSize: '0.875rem', color: filtroActivo ? 'var(--color-ambar)' : undefined, borderColor: filtroActivo ? 'var(--color-ambar)' : undefined }}
-          onClick={() => { setEstado(''); setTipo(''); setBusquedaInput(''); setBusqueda(''); setInspeccionVencida(false); setSubestacionId(''); setMostrarDadosDeBaja(false); setPagina(1); }}
+          onClick={() => { setDisponibilidad(''); setTipo(''); setBusquedaInput(''); setBusqueda(''); setInspeccionVencida(false); setSubestacionId(''); setMostrarDadosDeBaja(false); setPagina(1); }}
         >
           Limpiar
         </button>
@@ -347,7 +348,7 @@ export default function Activos() {
                     {/* Código es el dato principal — weight 600 para que el ojo lo encuentre primero */}
                     <td style={{ ...estilos.td, fontWeight: 600, color: '#1A1A1A' }}>{activo.codigo}</td>
                     <td style={estilos.td}>{ETIQUETA_TIPO[activo.tipo] ?? activo.tipo}</td>
-                    <td style={estilos.td}><EstadoBadge estado={activo.estado} /></td>
+                    <td style={estilos.td}><EstadoBadge estado={estadoVisual(activo)} /></td>
                     <td style={{ ...estilos.td, color: C.gris }}>{formatFecha(activo.fechaProximaInspeccion)}</td>
                     {/* Subestación: dato de localización, color normal */}
                     <td style={{ ...estilos.td, color: '#1A1A1A' }} className="col-secundaria">{activo.subestacion?.nombre ?? '—'}</td>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Info } from 'lucide-react';
 import { apiFetch } from '../lib/apiNode.js';
+import { estadoVisual } from '../lib/estadoVisual.js';
 
 // Tipos de OT disponibles por rol.
 // INSTALACION se excluye siempre: se genera de forma atómica al crear el activo
@@ -47,7 +48,7 @@ const estilosModal = {
 
 export default function ModalNuevaOT({ onCerrar, onCreada, token, usuario }) {
   const [activosDisponibles, setActivosDisponibles] = useState([]);
-  const [form, setForm] = useState({ activoId: '', tipo: '', descripcion: '', resultado: '' });
+  const [form, setForm] = useState({ activoId: '', tipo: '', descripcion: '', resultado: '', resultadoIntervencion: '' });
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
   const [cargandoActivos, setCargandoActivos] = useState(true);
@@ -60,20 +61,21 @@ export default function ModalNuevaOT({ onCerrar, onCreada, token, usuario }) {
     // coherente con la tabla que los oculta por defecto y con el dominio
     // (un activo dado de baja está fuera de servicio definitivo).
     apiFetch('/api/v1/activos?limite=100', {}, token)
-      .then(data => setActivosDisponibles((data.datos ?? []).filter(a => a.estado !== 'DADO_DE_BAJA')))
+      .then(data => setActivosDisponibles((data.datos ?? []).filter(a => estadoVisual(a) !== 'DADO_DE_BAJA')))
       .catch(() => setActivosDisponibles([]))
       .finally(() => setCargandoActivos(false));
   }, [token]);
 
   const activoSeleccionado = activosDisponibles.find(a => a.id === form.activoId) ?? null;
   const avisoInspeccionNoOperativo =
-    form.tipo === 'INSPECCION' && activoSeleccionado && activoSeleccionado.estado !== 'EN_SERVICIO';
+    form.tipo === 'INSPECCION' && activoSeleccionado && estadoVisual(activoSeleccionado) !== 'EN_SERVICIO';
 
   function setField(field, value) {
     setForm(prev => {
       const next = { ...prev, [field]: value };
-      // Al cambiar de tipo, limpiar resultado si ya no es INSPECCION
+      // Al cambiar de tipo, limpiar los campos condicionales que ya no aplican
       if (field === 'tipo' && value !== 'INSPECCION') next.resultado = '';
+      if (field === 'tipo' && !['PREVENTIVO', 'CORRECTIVO'].includes(value)) next.resultadoIntervencion = '';
       return next;
     });
   }
@@ -84,6 +86,7 @@ export default function ModalNuevaOT({ onCerrar, onCreada, token, usuario }) {
     if (!form.tipo) { setError('Selecciona el tipo de OT.'); return; }
     if (!form.descripcion.trim()) { setError('La descripción es obligatoria.'); return; }
     if (form.tipo === 'INSPECCION' && !form.resultado) { setError('El resultado es obligatorio para inspecciones.'); return; }
+    if (['PREVENTIVO', 'CORRECTIVO'].includes(form.tipo) && !form.resultadoIntervencion) { setError('El resultado de la intervención es obligatorio para preventivos y correctivos.'); return; }
 
     setError('');
     setCargando(true);
@@ -91,6 +94,9 @@ export default function ModalNuevaOT({ onCerrar, onCreada, token, usuario }) {
       const payload = { tipo: form.tipo, descripcion: form.descripcion.trim() };
       // resultado solo va en el body si el tipo es INSPECCION (schema Zod lo rechaza en otro caso)
       if (form.tipo === 'INSPECCION') payload.resultado = form.resultado;
+      // resultadoIntervencion declara en qué condición queda el equipo tras el preventivo/correctivo;
+      // reponer servicio es el desenlace OPERATIVO, no un "correctivo de reposición".
+      if (['PREVENTIVO', 'CORRECTIVO'].includes(form.tipo)) payload.resultadoIntervencion = form.resultadoIntervencion;
 
       await apiFetch(`/api/v1/activos/${form.activoId}/ordenes-trabajo`, {
         method: 'POST',
@@ -161,6 +167,25 @@ export default function ModalNuevaOT({ onCerrar, onCreada, token, usuario }) {
                 <option value="">Selecciona resultado…</option>
                 <option value="CONFORME">Conforme</option>
                 <option value="NO_CONFORME">No conforme</option>
+              </select>
+            </label>
+          )}
+
+          {/* resultadoIntervencion: declara en qué condición queda el equipo tras el preventivo/correctivo.
+              Reponer servicio es el desenlace OPERATIVO, no un "correctivo de reposición". */}
+          {['PREVENTIVO', 'CORRECTIVO'].includes(form.tipo) && (
+            <label style={estilosModal.label}>
+              Resultado de la intervención <span style={{ color: 'var(--color-rojo)' }}>*</span>
+              <select
+                required
+                value={form.resultadoIntervencion}
+                onChange={e => setField('resultadoIntervencion', e.target.value)}
+                style={estilosModal.input}
+              >
+                <option value="">Selecciona el resultado…</option>
+                <option value="OPERATIVO">Operativo — el equipo vuelve a servicio</option>
+                <option value="DEFECTUOSO">Defectuoso — el equipo queda averiado</option>
+                <option value="EN_DESCARGO">En descargo — el equipo queda fuera de servicio</option>
               </select>
             </label>
           )}

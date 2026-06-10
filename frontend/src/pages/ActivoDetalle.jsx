@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../lib/apiNode.js';
 import EstadoBadge from '../components/EstadoBadge.jsx';
 import TipoBadge from '../components/TipoBadge.jsx';
+import { estadoVisual, derivarEstado } from '../lib/estadoVisual.js';
 
 const TIPOS_OT = ['PREVENTIVO', 'CORRECTIVO', 'INSPECCION', 'INSTALACION', 'BAJA'];
 const RESULTADOS = ['CONFORME', 'NO_CONFORME'];
@@ -151,7 +152,7 @@ function ModalRegistrarOT({ activo, token, onCerrar, onRegistrada, rolUsuario })
               según la máquina de estados (diagnostica, no repara), pero es una intervención
               real y válida que debe poder registrarse. El aviso hace visible esa regla
               sin bloquear la acción. */}
-          {form.tipo === 'INSPECCION' && activo.estado !== 'EN_SERVICIO' && (
+          {form.tipo === 'INSPECCION' && estadoVisual(activo) !== 'EN_SERVICIO' && (
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', background: 'rgba(156,140,247,0.08)', border: '1px solid rgba(156,140,247,0.3)', borderRadius: 8, padding: '0.65rem 0.85rem' }}>
               <Info size={15} style={{ color: 'var(--color-violeta)', flexShrink: 0, marginTop: 1 }} />
               <span style={{ fontSize: '0.82rem', color: 'var(--color-violeta)', lineHeight: 1.5 }}>
@@ -234,7 +235,7 @@ export default function ActivoDetalle() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
               <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>{activo.codigo}</h2>
-              <EstadoBadge estado={activo.estado} />
+              <EstadoBadge estado={estadoVisual(activo)} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem 1.5rem', fontSize: '0.875rem', color: '#555' }}>
               <span><strong>Tipo:</strong> {ETIQUETA_TIPO_ACTIVO[activo.tipo] ?? activo.tipo}</span>
@@ -308,7 +309,14 @@ export default function ActivoDetalle() {
                     <td style={estilos.td}><TipoBadge tipo={ot.tipo} /></td>
                     <td style={{ ...estilos.td, maxWidth: 260, whiteSpace: 'pre-wrap' }}>{ot.descripcion}</td>
                     <td style={estilos.td}>{ot.resultado ?? '—'}</td>
-                    <td style={estilos.td}>{ot.estadoAnterior} → {ot.estadoNuevo}</td>
+                    <td style={{ ...estilos.td, whiteSpace: 'nowrap' }}>
+                      {ot.cicloVidaAnterior !== null ? (
+                        <><EstadoBadge estado={derivarEstado(ot.cicloVidaAnterior, ot.disponibilidadAnterior)} />{' → '}</>
+                      ) : (
+                        <span style={{ fontSize: '0.75rem', color: '#aaa' }}>Alta →&nbsp;</span>
+                      )}
+                      <EstadoBadge estado={derivarEstado(ot.cicloVidaNueva, ot.disponibilidadNueva)} />
+                    </td>
                     <td style={estilos.td}>{formatFecha(ot.fechaIntervencion)}</td>
                     <td style={estilos.td}>{ot.autor?.nombre ?? '—'}</td>
                   </tr>

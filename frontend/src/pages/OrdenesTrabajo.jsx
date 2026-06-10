@@ -4,13 +4,8 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../lib/apiNode.js';
 import ModalNuevaOT from '../components/ModalNuevaOT.jsx';
 import TipoBadge from '../components/TipoBadge.jsx';
-
-const ETIQUETA_ESTADO = {
-  EN_SERVICIO:       'En servicio',
-  AVERIADO:          'Averiado',
-  FUERA_DE_SERVICIO: 'Fuera de servicio',
-  DADO_DE_BAJA:      'Dado de baja',
-};
+import EstadoBadge from '../components/EstadoBadge.jsx';
+import { derivarEstado } from '../lib/estadoVisual.js';
 
 const ETIQUETA_TIPO_ACTIVO = {
   TRANSFORMADOR_POTENCIA:  'Transformador potencia',
@@ -233,12 +228,13 @@ export default function OrdenesTrabajo() {
                         </Link>
                       ) : '—'}
                     </td>
-                    <td style={{ ...estilos.td, fontSize: '0.8rem', color: '#555' }}>
-                      <span style={{ whiteSpace: 'nowrap' }}>
-                        {ETIQUETA_ESTADO[ot.estadoAnterior] ?? ot.estadoAnterior}
-                        {' → '}
-                        {ETIQUETA_ESTADO[ot.estadoNuevo] ?? ot.estadoNuevo}
-                      </span>
+                    <td style={{ ...estilos.td, whiteSpace: 'nowrap' }}>
+                      {ot.cicloVidaAnterior !== null ? (
+                        <><EstadoBadge estado={derivarEstado(ot.cicloVidaAnterior, ot.disponibilidadAnterior)} />{' → '}</>
+                      ) : (
+                        <span style={{ fontSize: '0.75rem', color: '#aaa' }}>Alta →&nbsp;</span>
+                      )}
+                      <EstadoBadge estado={derivarEstado(ot.cicloVidaNueva, ot.disponibilidadNueva)} />
                     </td>
                     <td style={estilos.td}>
                       {ot.tipo === 'INSPECCION' && ot.resultado ? (
