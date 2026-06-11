@@ -100,20 +100,20 @@ function ModalNuevoActivo({ onCerrar, onCreado, token }) {
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           <label style={estilosModal.label}>
-            Código <span style={{ color: 'var(--color-rojo)' }}>*</span>
+            <span>Código <span style={{ color: 'var(--color-rojo)' }}>*</span></span>
             <input required value={form.codigo} onChange={e => setField('codigo', e.target.value)}
               placeholder="Ej. T-001, QA-005" style={estilosModal.input} />
           </label>
 
           <label style={estilosModal.label}>
-            Tipo <span style={{ color: 'var(--color-rojo)' }}>*</span>
+            <span>Tipo <span style={{ color: 'var(--color-rojo)' }}>*</span></span>
             <select required value={form.tipo} onChange={e => setField('tipo', e.target.value)} style={estilosModal.input}>
               {TIPOS_ACTIVO.map(t => <option key={t} value={t}>{ETIQUETA_TIPO[t]}</option>)}
             </select>
           </label>
 
           <label style={estilosModal.label}>
-            Fabricante <span style={{ color: 'var(--color-rojo)' }}>*</span>
+            <span>Fabricante <span style={{ color: 'var(--color-rojo)' }}>*</span></span>
             <input required value={form.fabricante} onChange={e => setField('fabricante', e.target.value)}
               placeholder="Siemens, ABB…" style={estilosModal.input} />
           </label>
@@ -132,13 +132,13 @@ function ModalNuevoActivo({ onCerrar, onCreado, token }) {
           </div>
 
           <label style={estilosModal.label}>
-            Fecha puesta en servicio <span style={{ color: 'var(--color-rojo)' }}>*</span>
+            <span>Fecha puesta en servicio <span style={{ color: 'var(--color-rojo)' }}>*</span></span>
             <input required type="date" value={form.fechaPuestaEnServicio}
               onChange={e => setField('fechaPuestaEnServicio', e.target.value)} style={estilosModal.input} />
           </label>
 
           <label style={estilosModal.label}>
-            Subestación <span style={{ color: 'var(--color-rojo)' }}>*</span>
+            <span>Subestación <span style={{ color: 'var(--color-rojo)' }}>*</span></span>
             <select required value={form.subestacionId} onChange={e => setField('subestacionId', e.target.value)} style={estilosModal.input}>
               <option value="">Selecciona subestación…</option>
               {subestaciones.map(s => <option key={s.id} value={s.id}>{s.nombre} ({s.codigo})</option>)}

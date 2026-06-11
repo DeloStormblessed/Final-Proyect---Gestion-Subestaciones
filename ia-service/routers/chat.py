@@ -44,6 +44,10 @@ async def chat(
         result = await agent.ainvoke(
             {"messages": [{"role": "user", "content": body.message}]},
             config=config,
+            # Máximo 3 ciclos razonamiento→tool por turno (6 nodos = 3 pares LLM+tool).
+            # Si el agente no ha terminado en ese punto, LangGraph lanza GraphRecursionError
+            # que capturamos abajo y devolvemos como 500 con mensaje claro.
+            recursion_limit=6,
         )
 
         respuesta = result["messages"][-1].content

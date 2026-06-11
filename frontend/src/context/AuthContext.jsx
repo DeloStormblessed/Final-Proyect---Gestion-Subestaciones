@@ -1,20 +1,15 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState } from 'react';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [usuario, setUsuario] = useState(null);
-  const [token, setToken] = useState(null);
-
-  // Recupera la sesión al recargar la página
-  useEffect(() => {
-    const savedToken = localStorage.getItem('token');
-    const savedUsuario = localStorage.getItem('usuario');
-    if (savedToken && savedUsuario) {
-      setToken(savedToken);
-      setUsuario(JSON.parse(savedUsuario));
-    }
-  }, []);
+  // Inicialización lazy: lee localStorage en el primer render, antes de que
+  // RutaProtegida evalúe si hay sesión, evitando el redirect espurio en F5.
+  const [token, setToken] = useState(() => localStorage.getItem('token'));
+  const [usuario, setUsuario] = useState(() => {
+    const saved = localStorage.getItem('usuario');
+    return saved ? JSON.parse(saved) : null;
+  });
 
   function login(usuarioData, tokenData) {
     setUsuario(usuarioData);

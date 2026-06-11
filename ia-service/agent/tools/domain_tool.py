@@ -32,6 +32,7 @@ def listar_activos(
     estado: str = "",
     tipo: str = "",
     inspeccion_vencida: bool = False,
+    limite: int = 10,
     config: RunnableConfig = None,
 ) -> str:
     """
@@ -40,9 +41,11 @@ def listar_activos(
     - tipo: TRANSFORMADOR_POTENCIA | INTERRUPTOR_AUTOMATICO | SECCIONADOR |
             PARARRAYOS | TRANSFORMADOR_MEDIDA | BATERIA_CONDENSADORES
     - inspeccion_vencida: true para ver solo activos con inspección vencida
+    - limite: cuántos activos devolver (por defecto 10, máximo 50); aumentar
+              solo si la pregunta requiere un análisis exhaustivo de todos los activos
     """
     jwt = (config or {}).get("configurable", {}).get("jwt_token", "")
-    params = {"limite": 50}
+    params = {"limite": min(limite, 50)}
     if estado:
         params["estado"] = estado
     if tipo:

@@ -12,6 +12,7 @@ Node no las toca.
 """
 
 from langchain_groq import ChatGroq
+from langchain_core.messages import trim_messages
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
@@ -22,8 +23,9 @@ from agent.tools.domain_tool import DOMAIN_TOOLS
 SYSTEM_PROMPT = """Eres un asistente experto en mantenimiento de subestaciones eléctricas.
 Tienes acceso a la base de datos real del sistema GMAO a través de tus herramientas.
 
-Cuando el usuario pregunte sobre activos, órdenes de trabajo o el estado del sistema,
-usa siempre las herramientas disponibles para obtener datos actualizados antes de responder.
+Usa las herramientas SOLO cuando la pregunta trate sobre activos, órdenes de trabajo,
+inspecciones o el estado del sistema. Para saludos, preguntas generales o conversación
+informal, responde directamente sin invocar ninguna herramienta.
 
 Responde en español, de forma clara y técnica. Si usas datos del sistema, menciona
 los códigos de los activos y las fechas relevantes para que la respuesta sea precisa.
@@ -72,9 +74,27 @@ def build_agent(checkpointer: AsyncPostgresSaver):
         api_key=settings.groq_api_key,
         temperature=0,
     )
+
+    def _trim(messages):
+        # token_counter=llm usa get_num_tokens_from_messages() vía tiktoken,
+        # que es la mejor aproximación disponible para Llama 3 sin tokenizador oficial.
+        # 3 500 tokens reservados para historial deja margen para tool schemas (~1 500)
+        # y system prompt (~350) dentro del límite de Groq sin desperdiciar contexto.
+        # Los ToolMessages viejos (los más pesados) se descartan primero (strategy="last").
+        # El checkpointer los conserva en Postgres para el historial de la UI.
+        return trim_messages(
+            messages,
+            max_tokens=3500,
+            strategy="last",
+            token_counter=llm,
+            include_system=True,
+            allow_partial=False,
+        )
+
     return create_react_agent(
         model=llm,
         tools=DOMAIN_TOOLS,
         checkpointer=checkpointer,
-        state_modifier=SYSTEM_PROMPT,  # en LangGraph 0.2.x se llama state_modifier
+        state_modifier=SYSTEM_PROMPT,
+        messages_modifier=_trim,
     )
