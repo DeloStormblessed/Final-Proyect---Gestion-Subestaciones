@@ -1,11 +1,13 @@
-import { NavLink } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const NAV_ITEMS = [
-  { to: '/dashboard',         label: 'Dashboard' },
-  { to: '/activos',           label: 'Activos'   },
-  { to: '/ordenes-trabajo',   label: 'Órdenes'   },
-  { to: '/chat',              label: 'Asistente' },
+  { to: '/dashboard',        label: 'Dashboard' },
+  { to: '/activos',          label: 'Activos'   },
+  { to: '/ordenes-trabajo',  label: 'Órdenes'   },
+  { to: '/chat',             label: 'Asistente' },
 ];
 
 const ROL_COLOR = {
@@ -15,7 +17,37 @@ const ROL_COLOR = {
 };
 
 export default function Topbar() {
-  const { usuario } = useAuth();
+  const { usuario, logout } = useAuth();
+  const navigate = useNavigate();
+  const [abierto, setAbierto] = useState(false);
+  const menuRef = useRef(null);
+
+  // Cierra el dropdown al hacer click fuera o al pulsar Escape.
+  // Los listeners se registran solo cuando el menú está abierto para no acumular handlers.
+  useEffect(() => {
+    if (!abierto) return;
+
+    function handleClickFuera(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setAbierto(false);
+      }
+    }
+    function handleEscape(e) {
+      if (e.key === 'Escape') setAbierto(false);
+    }
+
+    document.addEventListener('mousedown', handleClickFuera);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickFuera);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [abierto]);
+
+  function handleLogout() {
+    logout();
+    navigate('/login');
+  }
 
   return (
     <header style={{
@@ -55,6 +87,60 @@ export default function Topbar() {
 
       {/* Info de usuario — siempre a la derecha, ancho fijo para no mover el layout */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.75rem' }}>
+
+        {/* Menú de configuración — visible para todos los roles.
+            Ocultar "Configuración" para no-ADMIN es solo UX: el acceso real lo
+            controla RutaAdmin (guard de ruta) + la autorización del backend.
+            Un TECNICO que teclee /configuracion es redirigido a /dashboard. */}
+        <div ref={menuRef} style={{ position: 'relative' }}>
+          <button
+            onClick={() => setAbierto(a => !a)}
+            title="Menú"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 6,
+              color: abierto ? '#1A1A1A' : '#888',
+              transition: 'color 0.15s',
+            }}
+          >
+            <Settings size={20} />
+          </button>
+
+          {abierto && (
+            <div style={{
+              position: 'absolute',
+              top: 'calc(100% + 8px)',
+              right: 0,
+              zIndex: 50,
+              background: '#fff',
+              border: '1px solid #eee',
+              borderRadius: 8,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.10)',
+              minWidth: 160,
+              overflow: 'hidden',
+            }}>
+              {/* "Configuración" solo para ADMIN: el resto ni lo ve */}
+              {usuario?.rol === 'ADMIN' && (
+                <ItemMenu
+                  onClick={() => { navigate('/configuracion'); setAbierto(false); }}
+                  label="Configuración"
+                />
+              )}
+              <ItemMenu
+                onClick={handleLogout}
+                label="Cerrar sesión"
+                danger
+              />
+            </div>
+          )}
+        </div>
+
         <div style={{ textAlign: 'right', minWidth: 0, maxWidth: 160, overflow: 'hidden' }}>
           <div style={{
             fontSize: '0.85rem', fontWeight: 600, color: '#1A1A1A',
@@ -78,5 +164,31 @@ export default function Topbar() {
         </div>
       </div>
     </header>
+  );
+}
+
+function ItemMenu({ onClick, label, danger = false }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'block',
+        width: '100%',
+        padding: '0.6rem 1rem',
+        background: hover ? '#F6F6F6' : 'transparent',
+        border: 'none',
+        textAlign: 'left',
+        cursor: 'pointer',
+        fontSize: '0.85rem',
+        color: danger ? '#FC5779' : '#1A1A1A',
+        fontWeight: 500,
+        transition: 'background 0.12s',
+      }}
+    >
+      {label}
+    </button>
   );
 }
