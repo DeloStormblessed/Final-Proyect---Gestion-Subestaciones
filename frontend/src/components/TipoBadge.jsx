@@ -1,9 +1,9 @@
 const COLORES = {
-  CORRECTIVO:  'var(--color-rojo)',
-  PREVENTIVO:  'var(--color-primario)',
-  INSPECCION:  'var(--color-violeta)',
-  INSTALACION: 'var(--color-oliva)',
-  BAJA:        'var(--color-gris)',
+  INSPECCION:  { bg: '#1D4ED8', texto: '#fff' },
+  PREVENTIVO:  { bg: '#0F766E', texto: '#fff' },
+  CORRECTIVO:  { bg: '#A21CAF', texto: '#fff' },
+  INSTALACION: { bg: '#6D28D9', texto: '#fff' },
+  BAJA:        { bg: '#4B5563', texto: '#fff' },
 };
 
 const ETIQUETAS = {
@@ -15,15 +15,14 @@ const ETIQUETAS = {
 };
 
 export default function TipoBadge({ tipo }) {
-  const color = COLORES[tipo] ?? 'var(--color-gris)';
-  const textoOscuro = tipo === 'PREVENTIVO' || tipo === 'INSTALACION';
+  const { bg, texto } = COLORES[tipo] ?? { bg: '#64748B', texto: '#fff' };
   return (
     <span style={{
       display: 'inline-block',
       minWidth: '6rem',
       textAlign: 'center',
-      background: color,
-      color: textoOscuro ? 'var(--color-nav)' : '#fff',
+      background: bg,
+      color: texto,
       padding: '0.25rem 0.5rem',
       borderRadius: '6px',
       fontSize: '0.75rem',

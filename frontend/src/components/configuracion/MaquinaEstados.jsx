@@ -1,53 +1,8 @@
 // Referencia visual de la máquina de estados V2 (solo lectura).
 // Los datos están verificados contra backend/lib/transiciones.js, la fuente de verdad:
 // si algo no coincide con el código, es un bug de este panel, no del backend.
-
-// ── Paleta local provisional ──────────────────────────────────────────────────
-// Este mapa no toca EstadoBadge ni TipoBadge: son componentes compartidos que usan
-// las variables CSS globales (--color-primario, --color-rojo, etc.). Cambiarlos aquí
-// se propagaría a Activos y OrdenesTrabajo. Cuando se unifique la paleta global estos
-// valores se promoverán a tokens compartidos y los componentes globales los consumirán.
-//
-// Tres familias semánticas sin solapes de color:
-// · Semáforo (verde/naranja/rojo) → salud operativa (disponibilidad). Reservado solo a
-//   este eje: ningún tipo de OT usa estos colores para no confundir "qué trabajo se hizo"
-//   con "cómo quedó el equipo".
-// · Neutros (gris azulado) → ciclo de vida. INSTALACION comparte tono con OPERATIVO porque
-//   es la OT que da de alta el activo (el activo nace OPERATIVO); la OT se pinta del color
-//   del estado que produce. BAJA comparte tono con DADO_DE_BAJA por el mismo parentesco.
-// · Espectro frío (cian/azul/violeta) → tipos de mantenimiento puro (sin rol en el ciclo
-//   de vida). Se distinguen del semáforo para que el tipo de trabajo no se confunda con
-//   el estado resultante.
-const PALETA = {
-  // Semáforo — disponibilidad / salud operativa
-  EN_SERVICIO:       { bg: '#DCFCE7', texto: '#15803D' },
-  AVERIADO:          { bg: '#FFEDD5', texto: '#C2410C' },
-  FUERA_DE_SERVICIO: { bg: '#FEE2E2', texto: '#B91C1C' },
-  DADO_DE_BAJA:      { bg: '#F1F5F9', texto: '#475569' },
-
-  // Neutros — ciclo de vida y las OTs que lo mueven
-  OPERATIVO:         { bg: '#E2E8F0', texto: '#1E293B' },
-  INSTALACION:       { bg: '#E2E8F0', texto: '#334155' }, // misma familia que OPERATIVO
-  BAJA:              { bg: '#F1F5F9', texto: '#64748B' }, // misma familia que DADO_DE_BAJA
-
-  // Espectro frío — tipos de mantenimiento
-  INSPECCION:        { bg: '#CFFAFE', texto: '#0E7490' },
-  PREVENTIVO:        { bg: '#DBEAFE', texto: '#1D4ED8' },
-  CORRECTIVO:        { bg: '#EDE9FE', texto: '#6D28D9' },
-};
-
-const ETIQUETAS_PANEL = {
-  EN_SERVICIO:       'En servicio',
-  AVERIADO:          'Averiado',
-  FUERA_DE_SERVICIO: 'Fuera de servicio',
-  DADO_DE_BAJA:      'Dado de baja',
-  OPERATIVO:         'Operativo',
-  INSTALACION:       'Instalación',
-  BAJA:              'Baja',
-  INSPECCION:        'Inspección',
-  PREVENTIVO:        'Preventivo',
-  CORRECTIVO:        'Correctivo',
-};
+import TipoBadge from '../TipoBadge.jsx';
+import EstadoBadge from '../EstadoBadge.jsx';
 
 export default function MaquinaEstados() {
   return (
@@ -60,16 +15,17 @@ export default function MaquinaEstados() {
             nombre="ciclo de Vida"
             nota="El ciclo de vida solo avanza en un sentido. Cuando un activo se da de baja, queda retirado de forma definitiva: no se reactiva ni admite nuevas intervenciones."
           >
-            <BadgePanel chave="OPERATIVO" />
-            <BadgePanel chave="DADO_DE_BAJA" />
+            {/* OPERATIVO no vive en EstadoBadge (es cicloVida, no disponibilidad) */}
+            <BadgeSolido label="Operativo" bg="#0E7490" texto="#fff" />
+            <EstadoBadge estado="DADO_DE_BAJA" />
           </EjeCard>
           <EjeCard
             nombre="estado"
             nota="Refleja si el equipo opera con normalidad, está averiado o se ha retirado temporalmente del servicio. Solo es relevante mientras el activo sigue operativo; tras la baja queda congelada en su último valor."
           >
-            <BadgePanel chave="EN_SERVICIO" />
-            <BadgePanel chave="AVERIADO" />
-            <BadgePanel chave="FUERA_DE_SERVICIO" />
+            <EstadoBadge estado="EN_SERVICIO" />
+            <EstadoBadge estado="AVERIADO" />
+            <EstadoBadge estado="FUERA_DE_SERVICIO" />
           </EjeCard>
         </div>
       </Tarjeta>
@@ -89,7 +45,7 @@ export default function MaquinaEstados() {
               {FILAS_OT.map((fila, i) => (
                 <tr key={fila.tipo} style={{ background: i % 2 === 0 ? '#fff' : '#F9F9F9' }}>
                   <td style={estilocelda}>
-                    <BadgePanel chave={fila.tipo} />
+                    <TipoBadge tipo={fila.tipo} />
                   </td>
                   <td style={estilocelda}><CeldaEje cell={fila.cicloVida} /></td>
                   <td style={estilocelda}><CeldaEje cell={fila.disponibilidad} /></td>
@@ -116,7 +72,7 @@ export default function MaquinaEstados() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
 
           <div style={estiloModificador}>
-            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--color-violeta)', marginBottom: '0.5rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.75rem' }}>
               Resultado de Inspección
             </div>
             <div style={{ fontSize: '0.82rem', color: '#666', marginBottom: '0.75rem' }}>
@@ -132,7 +88,7 @@ export default function MaquinaEstados() {
           </div>
 
           <div style={estiloModificador}>
-            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--color-primario)', marginBottom: '0.5rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.75rem' }}>
               Resultado de Intervención
             </div>
             <div style={{ fontSize: '0.82rem', color: '#666', marginBottom: '0.75rem' }}>
@@ -184,24 +140,30 @@ function EjeCard({ nombre, nota, children }) {
 }
 
 // Renderiza una celda de eje: o bien la raya (eje no afectado), o las badges del resultado.
+// OPERATIVO es cicloVida, no disponibilidad, por eso no está en EstadoBadge.
 function CeldaEje({ cell }) {
   if (cell.texto) {
     return <span style={{ color: '#bbb', fontSize: '1.1rem', fontWeight: 700 }}>—</span>;
   }
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-      {cell.badges.map(chave => <BadgePanel key={chave} chave={chave} />)}
+      {cell.badges.map(estado =>
+        estado === 'OPERATIVO'
+          ? <BadgeSolido key={estado} label="Operativo" bg="#0E7490" texto="#fff" />
+          : <EstadoBadge key={estado} estado={estado} />
+      )}
     </div>
   );
 }
 
-// Badge local del panel — tira del mapa PALETA. No usar fuera de MaquinaEstados:
-// cuando la paleta global se unifique, BadgePanel se promoverá a tokens compartidos.
-function BadgePanel({ chave, label }) {
-  const { bg, texto } = PALETA[chave] ?? { bg: '#eee', texto: '#444' };
+// Badge mínimo para valores sin componente compartido: OPERATIVO (cicloVida) y
+// los ResultadoIntervencion, que llevan etiqueta propia pero el color del estado que producen.
+function BadgeSolido({ label, bg, texto }) {
   return (
     <span style={{
       display: 'inline-block',
+      minWidth: '8.5rem',
+      textAlign: 'center',
       background: bg,
       color: texto,
       padding: '0.25rem 0.5rem',
@@ -210,18 +172,18 @@ function BadgePanel({ chave, label }) {
       fontWeight: 600,
       whiteSpace: 'nowrap',
     }}>
-      {label ?? ETIQUETAS_PANEL[chave] ?? chave}
+      {label}
     </span>
   );
 }
 
 function TablaModificador({ filas, variante = 'texto' }) {
-  // ResultadoIntervencion se pinta del color del estado que produce, no de su propio nombre:
-  // OPERATIVO→EN_SERVICIO (verde), DEFECTUOSO→AVERIADO (naranja), EN DESCARGO→FUERA_DE_SERVICIO (rojo).
+  // ResultadoIntervencion: etiqueta propia pero color del estado que produce,
+  // para que coincida visualmente con la columna "Disponibilidad resultante".
   const mapIntervencion = {
-    'OPERATIVO':    { chave: 'EN_SERVICIO',      label: 'Operativo'   },
-    'DEFECTUOSO':   { chave: 'AVERIADO',          label: 'Defectuoso'  },
-    'EN DESCARGO':  { chave: 'FUERA_DE_SERVICIO', label: 'En descargo' },
+    'OPERATIVO':   { bg: '#16A34A', texto: '#fff', label: 'Operativo'   },
+    'DEFECTUOSO':  { bg: '#EF4444', texto: '#fff', label: 'Defectuoso'  },
+    'EN DESCARGO': { bg: '#D97706', texto: '#fff', label: 'En descargo' },
   };
 
   return (
@@ -238,7 +200,7 @@ function TablaModificador({ filas, variante = 'texto' }) {
             <td style={estiloTdMod}>
               {variante === 'inspeccion' && (
                 <span style={{
-                  color: fila.valor === 'NO CONFORME' ? PALETA.AVERIADO.texto : PALETA.EN_SERVICIO.texto,
+                  color: fila.valor === 'NO CONFORME' ? '#EF4444' : '#16A34A',
                   fontWeight: 600,
                   fontSize: '0.88rem',
                 }}>
@@ -246,8 +208,9 @@ function TablaModificador({ filas, variante = 'texto' }) {
                 </span>
               )}
               {variante === 'intervencion' && mapIntervencion[fila.valor] && (
-                <BadgePanel
-                  chave={mapIntervencion[fila.valor].chave}
+                <BadgeSolido
+                  bg={mapIntervencion[fila.valor].bg}
+                  texto={mapIntervencion[fila.valor].texto}
                   label={mapIntervencion[fila.valor].label}
                 />
               )}
@@ -258,7 +221,7 @@ function TablaModificador({ filas, variante = 'texto' }) {
               )}
             </td>
             <td style={estiloTdMod}>
-              <BadgePanel chave={fila.resultado} />
+              <EstadoBadge estado={fila.resultado} />
             </td>
           </tr>
         ))}

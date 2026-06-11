@@ -60,7 +60,7 @@ function ModalEditarActivo({ activo, token, onCerrar, onGuardado }) {
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           <label style={estilosModal.label}>
-            Fabricante <span style={{ color: 'var(--color-rojo)' }}>*</span>
+            <span>Fabricante <span style={{ color: 'var(--color-rojo)' }}>*</span></span>
             <input required value={form.fabricante} onChange={e => setForm(p => ({ ...p, fabricante: e.target.value }))} style={estilosModal.input} />
           </label>
           <label style={estilosModal.label}>

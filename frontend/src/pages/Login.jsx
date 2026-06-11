@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../lib/apiNode.js';
 
@@ -33,9 +33,8 @@ export default function Login() {
   return (
     <div style={estilos.pagina}>
       <div style={estilos.tarjeta}>
-        <h1 style={estilos.titulo}>⚡ GMAO Subestaciones</h1>
-        <p style={estilos.subtitulo}>Inicia sesión para continuar</p>
-
+        <h1 style={estilos.titulo}>Gestión Subestaciones</h1>
+        <br></br>
         {error && <p className="banner-error" style={{ marginBottom: '1rem' }}>{error}</p>}
 
         <form onSubmit={handleSubmit} style={estilos.form}>
@@ -75,12 +74,6 @@ export default function Login() {
           </button>
         </form>
 
-        <p style={{ marginTop: '1.25rem', textAlign: 'center', fontSize: '0.875rem', color: '#666' }}>
-          ¿Sin cuenta?{' '}
-          <Link to="/registro" style={{ color: 'var(--color-primario)', fontWeight: 600 }}>
-            Regístrate
-          </Link>
-        </p>
       </div>
     </div>
   );
@@ -92,25 +85,29 @@ const estilos = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'var(--color-fondo-suave)',
+    backgroundImage: 'url(/login-bg.jpg)',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
     padding: '1rem',
   },
   tarjeta: {
-    background: 'var(--color-fondo)',
+    background: 'rgba(14, 116, 144, 0.50)',
     borderRadius: 12,
     padding: '2.5rem 2rem',
     width: '100%',
     maxWidth: 400,
-    boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+    boxShadow: '0 8px 40px rgba(0,0,0,0.30)',
+    backdropFilter: 'blur(4px)',
   },
   titulo: {
     fontSize: '1.4rem',
     fontWeight: 700,
     marginBottom: '0.25rem',
-    color: 'var(--color-texto)',
+    color: '#fff',
   },
   subtitulo: {
-    color: '#666',
+    color: 'rgba(255,255,255,0.75)',
     fontSize: '0.9rem',
     marginBottom: '1.5rem',
   },
@@ -125,7 +122,7 @@ const estilos = {
     gap: '0.35rem',
     fontSize: '0.875rem',
     fontWeight: 500,
-    color: 'var(--color-texto)',
+    color: 'rgba(255,255,255,0.90)',
   },
   input: {
     padding: '0.6rem 0.75rem',

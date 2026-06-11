@@ -11,28 +11,28 @@ import EstadoBadge from '../components/EstadoBadge.jsx';
 import { derivarEstado } from '../lib/estadoVisual.js';
 
 const C = {
-  primario:  '#A4C63A',
-  rojo:      '#FC5779',
-  ambar:     '#FEBD01',
-  violeta:   '#9C8CF7',
-  oliva:     '#C9C466',
-  gris:      '#9AA0A6',
+  primario:  '#16A34A',  // EN_SERVICIO
+  rojo:      '#EF4444',  // AVERIADO
+  ambar:     '#D97706',  // FUERA_DE_SERVICIO / atraso
+  violeta:   '#1D4ED8',  // INSPECCION
+  oliva:     '#6D28D9',  // INSTALACION
+  gris:      '#4B5563',  // DADO_DE_BAJA / BAJA
   nav:       '#0E0E0E',
 };
 
 const COLOR_ESTADO = {
-  EN_SERVICIO:       C.primario,
-  AVERIADO:          C.rojo,
-  FUERA_DE_SERVICIO: C.ambar,
-  DADO_DE_BAJA:      C.gris,
+  EN_SERVICIO:       '#16A34A',
+  AVERIADO:          '#EF4444',
+  FUERA_DE_SERVICIO: '#D97706',
+  DADO_DE_BAJA:      '#4B5563',
 };
 
 const COLOR_TIPO = {
-  CORRECTIVO:  C.rojo,
-  PREVENTIVO:  C.primario,
-  INSPECCION:  C.violeta,
-  INSTALACION: C.oliva,
-  BAJA:        C.gris,
+  CORRECTIVO:  '#A21CAF',
+  PREVENTIVO:  '#0F766E',
+  INSPECCION:  '#1D4ED8',
+  INSTALACION: '#6D28D9',
+  BAJA:        '#4B5563',
 };
 
 const LABEL_ESTADO = {
@@ -368,7 +368,7 @@ export default function Dashboard() {
                               style={{
                                 color: C.primario,
                                 textDecoration: hoveredActivo === ot.id ? 'underline' : 'none',
-                                background: hoveredActivo === ot.id ? 'rgba(164,198,58,0.15)' : 'transparent',
+                                background: hoveredActivo === ot.id ? 'rgba(22,163,74,0.12)' : 'transparent',
                                 borderRadius: 4,
                                 padding: '2px 4px',
                                 transition: 'background 0.15s',

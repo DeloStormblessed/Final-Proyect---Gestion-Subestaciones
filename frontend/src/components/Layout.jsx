@@ -101,26 +101,7 @@ export default function Layout() {
         {/* Links de navegación */}
         <nav style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
           {NAV_ITEMS.map(({ to, label, Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              title={label}
-              style={({ isActive }) => ({
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 44,
-                height: 44,
-                borderRadius: 10,
-                background: isActive ? '#A4C63A' : 'transparent',
-                transition: 'background 0.15s, color 0.15s',
-                cursor: 'pointer',
-              })}
-            >
-              {({ isActive }) => (
-                <Icon size={20} color={isActive ? '#0E0E0E' : '#666'} />
-              )}
-            </NavLink>
+            <SideNavItem key={to} to={to} label={label} Icon={Icon} />
           ))}
         </nav>
 
@@ -152,5 +133,32 @@ export default function Layout() {
         </main>
       </div>
     </div>
+  );
+}
+
+function SideNavItem({ to, label, Icon }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <NavLink
+      to={to}
+      title={label}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={({ isActive }) => ({
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 44,
+        height: 44,
+        borderRadius: 10,
+        background: isActive ? '#A4C63A' : hover ? 'rgba(255,255,255,0.07)' : 'transparent',
+        transition: 'background 0.15s',
+        cursor: 'pointer',
+      })}
+    >
+      {({ isActive }) => (
+        <Icon size={20} color={isActive ? '#0E0E0E' : hover ? '#bbb' : '#666'} />
+      )}
+    </NavLink>
   );
 }

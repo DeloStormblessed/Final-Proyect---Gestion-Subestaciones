@@ -1,8 +1,8 @@
 const COLORES = {
-  EN_SERVICIO:       'var(--color-primario)',
-  AVERIADO:          'var(--color-rojo)',
-  FUERA_DE_SERVICIO: 'var(--color-ambar)',
-  DADO_DE_BAJA:      'var(--color-gris)',
+  EN_SERVICIO:       '#16A34A',
+  AVERIADO:          '#EF4444',
+  FUERA_DE_SERVICIO: '#D97706',
+  DADO_DE_BAJA:      '#4B5563',
 };
 
 const ETIQUETAS = {
@@ -20,7 +20,7 @@ export default function EstadoBadge({ estado }) {
       minWidth: '8.5rem',
       textAlign: 'center',
       background: color,
-      color: estado === 'FUERA_DE_SERVICIO' ? '#333' : estado === 'EN_SERVICIO' ? 'var(--color-nav)' : '#fff',
+      color: '#fff',
       padding: '0.25rem 0.5rem',
       borderRadius: '6px',
       fontSize: '0.75rem',

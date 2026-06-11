@@ -11,15 +11,16 @@ const NAV_ITEMS = [
 ];
 
 const ROL_COLOR = {
-  ADMIN:    '#9C8CF7',
-  TECNICO:  '#A4C63A',
-  OPERARIO: '#FEBD01',
+  ADMIN:    '#7C3AED',
+  TECNICO:  '#4D7C0F',
+  OPERARIO: '#B45309',
 };
 
 export default function Topbar() {
   const { usuario, logout } = useAuth();
   const navigate = useNavigate();
   const [abierto, setAbierto] = useState(false);
+  const [hoverGear, setHoverGear] = useState(false);
   const menuRef = useRef(null);
 
   // Cierra el dropdown al hacer click fuera o al pulsar Escape.
@@ -66,22 +67,7 @@ export default function Topbar() {
       {/* Tabs de navegación */}
       <nav style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
         {NAV_ITEMS.map(({ to, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            style={({ isActive }) => ({
-              padding: '0.25rem 0.85rem',
-              borderRadius: 999,
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              background: isActive ? '#0E0E0E' : 'transparent',
-              color: isActive ? '#fff' : '#aaa',
-              transition: 'background 0.15s, color 0.15s',
-              whiteSpace: 'nowrap',
-            })}
-          >
-            {label}
-          </NavLink>
+          <NavPill key={to} to={to} label={label} />
         ))}
       </nav>
 
@@ -95,18 +81,23 @@ export default function Topbar() {
         <div ref={menuRef} style={{ position: 'relative' }}>
           <button
             onClick={() => setAbierto(a => !a)}
+            onMouseEnter={() => setHoverGear(true)}
+            onMouseLeave={() => setHoverGear(false)}
             title="Menú"
             style={{
-              background: 'transparent',
-              border: 'none',
+              width: 36,
+              height: 36,
+              background: abierto ? '#E4E4E4' : hoverGear ? '#F0F0F0' : '#fff',
+              border: '1px solid #E0E0E0',
               cursor: 'pointer',
-              padding: '4px',
+              padding: 0,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              borderRadius: 6,
-              color: abierto ? '#1A1A1A' : '#888',
-              transition: 'color 0.15s',
+              borderRadius: 8,
+              flexShrink: 0,
+              color: abierto || hoverGear ? '#1A1A1A' : '#888',
+              transition: 'background 0.15s, color 0.15s',
             }}
           >
             <Settings size={20} />
@@ -157,13 +148,36 @@ export default function Topbar() {
           borderRadius: '50%',
           background: ROL_COLOR[usuario?.rol] ?? '#eee',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '0.85rem', fontWeight: 700, color: '#0E0E0E',
+          fontSize: '0.85rem', fontWeight: 700, color: '#fff',
           flexShrink: 0,
         }}>
           {usuario?.nombre?.charAt(0).toUpperCase() ?? '?'}
         </div>
       </div>
     </header>
+  );
+}
+
+function NavPill({ to, label }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <NavLink
+      to={to}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={({ isActive }) => ({
+        padding: '0.25rem 0.85rem',
+        borderRadius: 999,
+        fontSize: '0.82rem',
+        fontWeight: 700,
+        background: isActive ? '#0E0E0E' : hover ? '#F0F0F0' : 'transparent',
+        color: isActive ? '#fff' : hover ? '#1A1A1A' : '#aaa',
+        transition: 'background 0.15s, color 0.15s',
+        whiteSpace: 'nowrap',
+      })}
+    >
+      {label}
+    </NavLink>
   );
 }
 
