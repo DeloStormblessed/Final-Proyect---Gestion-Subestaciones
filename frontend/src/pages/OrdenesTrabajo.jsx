@@ -43,6 +43,10 @@ export default function OrdenesTrabajo() {
   const [mostrarModal, setMostrarModal] = useState(false);
   const [confirmacion, setConfirmacion] = useState('');
   const [hoveredRow, setHoveredRow] = useState(null);
+  const [descExpandida, setDescExpandida] = useState(null);
+  const [hoveredDesc, setHoveredDesc] = useState(null);
+  const [hoveredActivo, setHoveredActivo] = useState(null);
+  const [paginaFiltrada, setPaginaFiltrada] = useState(1);
 
   // Filtros
   const [tipo, setTipo] = useState('');
@@ -86,12 +90,14 @@ export default function OrdenesTrabajo() {
   const cargar = useCallback(() => {
     setCargando(true);
     setError('');
-    const params = new URLSearchParams({ pagina, limite: 20 });
+    // Cuando hay filtro de subestación (cliente) pedimos el máximo al backend para que
+    // el cruce activoId→subestacionId tenga todos los datos, no solo la página actual.
+    const limiteEfectivo = subestacionFiltro ? 100 : 20;
+    const paginaEfectiva = subestacionFiltro ? 1 : pagina;
+    const params = new URLSearchParams({ pagina: paginaEfectiva, limite: limiteEfectivo });
     if (tipo) params.set('tipo', tipo);
     if (fechaDesde) params.set('fechaDesde', fechaDesde);
     if (fechaHasta) params.set('fechaHasta', fechaHasta);
-    // subestacionFiltro no va al backend (la OT no tiene subestacionId);
-    // el cruce se hace en cliente sobre activoSubestMap.
 
     apiFetch(`/api/v1/ordenes-trabajo?${params}`, {}, token)
       .then(data => {
@@ -100,14 +106,21 @@ export default function OrdenesTrabajo() {
       })
       .catch(err => setError(err.message))
       .finally(() => setCargando(false));
-  }, [token, pagina, tipo, fechaDesde, fechaHasta]);
+  }, [token, pagina, tipo, fechaDesde, fechaHasta, subestacionFiltro]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
   // Filtro de subestación en cliente: cruza ot.activo.id con el mapa activoId→subestacionId.
-  const otsVisibles = subestacionFiltro
+  const otsFiltradas = subestacionFiltro
     ? ots.filter(ot => activoSubestMap[ot.activo?.id] === subestacionFiltro)
     : ots;
+
+  const LIMITE = 20;
+  const totalPaginasFiltradas = Math.ceil(otsFiltradas.length / LIMITE);
+  // Cuando el filtro de subestación está activo paginamos en cliente sobre el dataset completo.
+  const otsVisibles = subestacionFiltro
+    ? otsFiltradas.slice((paginaFiltrada - 1) * LIMITE, paginaFiltrada * LIMITE)
+    : otsFiltradas;
 
   const filtroActivo = !!(tipo || subestacionFiltro || fechaDesde || fechaHasta);
 
@@ -137,7 +150,7 @@ export default function OrdenesTrabajo() {
           {TODOS_TIPOS.map(t => <option key={t} value={t}>{ETIQUETA_TIPO_OT[t]}</option>)}
         </select>
 
-        <select className="filtro-input" value={subestacionFiltro} onChange={e => { setSubestacionFiltro(e.target.value); }}>
+        <select className="filtro-input" value={subestacionFiltro} onChange={e => { setSubestacionFiltro(e.target.value); setPagina(1); setPaginaFiltrada(1); }}>
           <option value="">Todas las subestaciones</option>
           {subestaciones.map(s => (
             <option key={s.id} value={s.id}>{s.nombre}</option>
@@ -193,15 +206,13 @@ export default function OrdenesTrabajo() {
             <table style={estilos.tabla}>
               <thead>
                 <tr>
-                  <th style={{ ...estilos.th, width: '10%' }}>Fecha</th>
-                  <th style={{ ...estilos.th, width: '11%' }}>Tipo</th>
-                  <th style={{ ...estilos.th, width: '12%' }}>Activo</th>
-                  {/* Transición: snapshot inmutable del estado antes/después de la OT.
-                      El histórico es autosuficiente aunque la máquina de estados cambie en el futuro. */}
-                  <th style={{ ...estilos.th, width: '20%' }}>Transición</th>
-                  <th style={{ ...estilos.th, width: '10%' }}>Resultado</th>
-                  <th style={{ ...estilos.th, width: '12%' }} className="col-secundaria">Técnico</th>
-                  <th style={{ ...estilos.th, width: '25%' }} className="col-secundaria">Descripción</th>
+                  <th style={estilos.th}>Fecha</th>
+                  <th style={estilos.th}>Activo</th>
+                  <th style={estilos.th}>Estado</th>
+                  <th style={estilos.th}>Tipo</th>
+                  <th style={estilos.th}>Resultado</th>
+                  <th style={estilos.th} className="col-secundaria">Técnico</th>
+                  <th style={estilos.th} className="col-secundaria">Descripción</th>
                 </tr>
               </thead>
               <tbody>
@@ -215,44 +226,59 @@ export default function OrdenesTrabajo() {
                       transition: 'background 0.1s',
                     }}
                   >
-                    <td style={{ ...estilos.td, color: '#666', fontSize: '0.82rem' }}>{formatFecha(ot.fechaIntervencion)}</td>
-                    <td style={estilos.td}><TipoBadge tipo={ot.tipo} /></td>
+                    <td style={{ ...estilos.td, color: '#9AA0A6', fontSize: '0.82rem' }}>{formatFecha(ot.fechaIntervencion)}</td>
                     <td style={{ ...estilos.td, fontWeight: 600 }}>
                       {ot.activo ? (
                         <Link
                           to={`/activos/${ot.activo.id}`}
-                          style={{ color: 'var(--color-primario)', textDecoration: 'none' }}
+                          style={{
+                            color: 'var(--color-primario)',
+                            textDecoration: hoveredActivo === ot.id ? 'underline' : 'none',
+                            background: hoveredActivo === ot.id ? 'rgba(164,198,58,0.15)' : 'transparent',
+                            borderRadius: 4,
+                            padding: '2px 4px',
+                            transition: 'background 0.15s',
+                          }}
                           title={ETIQUETA_TIPO_ACTIVO[ot.activo.tipo] ?? ot.activo.tipo}
+                          onMouseEnter={() => setHoveredActivo(ot.id)}
+                          onMouseLeave={() => setHoveredActivo(null)}
                         >
                           {ot.activo.codigo}
                         </Link>
                       ) : '—'}
                     </td>
-                    <td style={{ ...estilos.td, whiteSpace: 'nowrap' }}>
-                      {ot.cicloVidaAnterior !== null ? (
-                        <><EstadoBadge estado={derivarEstado(ot.cicloVidaAnterior, ot.disponibilidadAnterior)} />{' → '}</>
-                      ) : (
-                        <span style={{ fontSize: '0.75rem', color: '#aaa' }}>Alta →&nbsp;</span>
-                      )}
+                    <td style={estilos.td}>
                       <EstadoBadge estado={derivarEstado(ot.cicloVidaNueva, ot.disponibilidadNueva)} />
                     </td>
-                    <td style={estilos.td}>
-                      {ot.tipo === 'INSPECCION' && ot.resultado ? (
-                        <span style={{
-                          fontSize: '0.75rem', fontWeight: 700,
-                          color: ot.resultado === 'CONFORME' ? 'var(--color-primario)' : 'var(--color-rojo)',
-                        }}>
-                          {ot.resultado === 'CONFORME' ? 'Conforme' : 'No conforme'}
-                        </span>
-                      ) : <span style={{ color: '#ccc' }}>—</span>}
+                    <td style={estilos.td}><TipoBadge tipo={ot.tipo} /></td>
+                    <td style={{
+                      ...estilos.td,
+                      color: ot.resultado === 'NO_CONFORME' ? 'var(--color-rojo)' : ot.resultado === 'CONFORME' ? 'var(--color-primario)' : '#1A1A1A',
+                      fontWeight: 600,
+                    }}>
+                      {ot.resultado === 'NO_CONFORME' ? 'NO CONFORME' : ot.resultado ?? '—'}
                     </td>
-                    <td style={{ ...estilos.td, color: '#666' }} className="col-secundaria">
+                    <td style={{ ...estilos.td, color: '#9AA0A6' }} className="col-secundaria">
                       {ot.autor?.nombre ?? '—'}
                     </td>
                     <td
-                      style={{ ...estilos.td, color: '#888', fontSize: '0.82rem' }}
+                      style={{
+                        ...estilos.td,
+                        color: '#888',
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        borderRadius: 4,
+                        background: hoveredDesc === ot.id ? 'rgba(164,198,58,0.10)' : 'transparent',
+                        transition: 'background 0.15s',
+                        ...(descExpandida === ot.id
+                          ? { whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip' }
+                          : {}),
+                      }}
                       className="col-secundaria"
-                      title={ot.descripcion}
+                      title={descExpandida !== ot.id ? 'Ver más' : undefined}
+                      onMouseEnter={() => setHoveredDesc(ot.id)}
+                      onMouseLeave={() => setHoveredDesc(null)}
+                      onClick={() => setDescExpandida(prev => prev === ot.id ? null : ot.id)}
                     >
                       {ot.descripcion}
                     </td>
@@ -262,14 +288,26 @@ export default function OrdenesTrabajo() {
             </table>
           </div>
 
-          {paginacion.totalPaginas > 1 && (
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginTop: '1.25rem', alignItems: 'center' }}>
-              <button className="btn-secundario" disabled={pagina <= 1} onClick={() => setPagina(p => p - 1)}>←</button>
-              <span style={{ fontSize: '0.875rem', color: '#666' }}>
-                Página {paginacion.pagina} de {paginacion.totalPaginas}
-              </span>
-              <button className="btn-secundario" disabled={pagina >= paginacion.totalPaginas} onClick={() => setPagina(p => p + 1)}>→</button>
-            </div>
+          {subestacionFiltro ? (
+            totalPaginasFiltradas > 1 && (
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginTop: '1.25rem', alignItems: 'center' }}>
+                <button className="btn-secundario" disabled={paginaFiltrada <= 1} onClick={() => setPaginaFiltrada(p => p - 1)}>←</button>
+                <span style={{ fontSize: '0.875rem', color: '#666' }}>
+                  Página {paginaFiltrada} de {totalPaginasFiltradas}
+                </span>
+                <button className="btn-secundario" disabled={paginaFiltrada >= totalPaginasFiltradas} onClick={() => setPaginaFiltrada(p => p + 1)}>→</button>
+              </div>
+            )
+          ) : (
+            paginacion.totalPaginas > 1 && (
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginTop: '1.25rem', alignItems: 'center' }}>
+                <button className="btn-secundario" disabled={pagina <= 1} onClick={() => setPagina(p => p - 1)}>←</button>
+                <span style={{ fontSize: '0.875rem', color: '#666' }}>
+                  Página {paginacion.pagina} de {paginacion.totalPaginas}
+                </span>
+                <button className="btn-secundario" disabled={pagina >= paginacion.totalPaginas} onClick={() => setPagina(p => p + 1)}>→</button>
+              </div>
+            )
           )}
         </>
       )}
@@ -292,7 +330,7 @@ export default function OrdenesTrabajo() {
 }
 
 const estilos = {
-  tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', tableLayout: 'fixed' },
+  tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', tableLayout: 'fixed', minWidth: 750 },
   th: {
     textAlign: 'left', padding: '0.5rem 0.75rem',
     fontWeight: 700, color: '#1A1A1A', fontSize: '0.72rem',

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Eye, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../lib/apiNode.js';
 import EstadoBadge from '../components/EstadoBadge.jsx';
@@ -168,7 +168,9 @@ export default function Activos() {
   const [mostrarModalOT, setMostrarModalOT] = useState(false);
   const [confirmacion, setConfirmacion] = useState('');
   const [hoveredRow, setHoveredRow] = useState(null);
+  const [hoveredActivo, setHoveredActivo] = useState(null);
   const [mostrarDadosDeBaja, setMostrarDadosDeBaja] = useState(false);
+  const [paginaFiltrada, setPaginaFiltrada] = useState(1);
 
   // Filtros
   const [disponibilidad, setDisponibilidad] = useState('');
@@ -206,7 +208,11 @@ export default function Activos() {
   const cargar = useCallback(() => {
     setCargando(true);
     setError('');
-    const params = new URLSearchParams({ pagina, limite: 20 });
+    // Cuando el checkbox "dado de baja" está activo el filtro es en cliente,
+    // así que pedimos el máximo al backend para tener todos los activos disponibles.
+    const limiteEfectivo = mostrarDadosDeBaja ? 100 : 20;
+    const paginaEfectiva = mostrarDadosDeBaja ? 1 : pagina;
+    const params = new URLSearchParams({ pagina: paginaEfectiva, limite: limiteEfectivo });
     if (disponibilidad) params.set('disponibilidad', disponibilidad);
     if (tipo) params.set('tipo', tipo);
     if (busqueda) params.set('busqueda', busqueda);
@@ -220,7 +226,7 @@ export default function Activos() {
       })
       .catch(err => setError(err.message))
       .finally(() => setCargando(false));
-  }, [token, pagina, disponibilidad, tipo, busqueda, inspeccionVencida, subestacionId]);
+  }, [token, pagina, disponibilidad, tipo, busqueda, inspeccionVencida, subestacionId, mostrarDadosDeBaja]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -230,9 +236,16 @@ export default function Activos() {
   //   alineado con el dashboard que ya los excluye de ese KPI).
   // • sortByCriticidad: AVERIADO → FUERA_DE_SERVICIO → EN_SERVICIO → DADO_DE_BAJA,
   //   con fechaProximaInspeccion ascendente como desempate.
-  const activosVisibles = [...activos]
+  const activosFiltrados = [...activos]
     .filter(a => mostrarDadosDeBaja ? estadoVisual(a) === 'DADO_DE_BAJA' : estadoVisual(a) !== 'DADO_DE_BAJA')
     .sort(sortByCriticidad);
+
+  const LIMITE = 20;
+  const totalPaginasFiltradas = Math.ceil(activosFiltrados.length / LIMITE);
+  // Cuando el filtro de baja está activo paginamos en cliente sobre el dataset completo.
+  const activosVisibles = mostrarDadosDeBaja
+    ? activosFiltrados.slice((paginaFiltrada - 1) * LIMITE, paginaFiltrada * LIMITE)
+    : activosFiltrados;
 
   const filtroActivo = !!(disponibilidad || tipo || busquedaInput || inspeccionVencida || subestacionId || mostrarDadosDeBaja);
 
@@ -274,7 +287,7 @@ export default function Activos() {
         </select>
 
         <select className="filtro-input" value={tipo} onChange={e => { setTipo(e.target.value); setPagina(1); }}>
-          <option value="">Todos los tipos</option>
+          <option value="">Todos los elementos</option>
           {TIPOS_ACTIVO.map(t => <option key={t} value={t}>{ETIQUETA_TIPO[t]}</option>)}
         </select>
 
@@ -292,7 +305,7 @@ export default function Activos() {
         </label>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-          <input type="checkbox" checked={mostrarDadosDeBaja} onChange={e => { setMostrarDadosDeBaja(e.target.checked); setPagina(1); }} />
+          <input type="checkbox" checked={mostrarDadosDeBaja} onChange={e => { setMostrarDadosDeBaja(e.target.checked); setPagina(1); setPaginaFiltrada(1); }} />
           Dado de baja
         </label>
 
@@ -325,13 +338,12 @@ export default function Activos() {
                   catálogo (fabricante), que es el menos urgente para operar. */}
               <thead>
                 <tr>
-                  <th style={{ ...estilos.th, width: '10%' }}>Código</th>
-                  <th style={{ ...estilos.th, width: '20%' }}>Tipo</th>
-                  <th style={{ ...estilos.th, width: '15%' }}>Estado</th>
-                  <th style={{ ...estilos.th, width: '13%' }}>Próx. inspección</th>
-                  <th style={{ ...estilos.th, width: '17%' }} className="col-secundaria">Subestación</th>
-                  <th style={{ ...estilos.th, width: '15%' }} className="col-secundaria">Fabricante</th>
-                  <th style={{ ...estilos.th, width: '10%' }}></th>
+                  <th style={estilos.th}>Activo</th>
+                  <th style={estilos.th}>Elemento</th>
+                  <th style={estilos.th}>Estado</th>
+                  <th style={estilos.th}>Próx. inspección</th>
+                  <th style={estilos.th} className="col-secundaria">Subestación</th>
+                  <th style={estilos.th} className="col-secundaria">Fabricante</th>
                 </tr>
               </thead>
               <tbody>
@@ -345,40 +357,28 @@ export default function Activos() {
                       transition: 'background 0.1s',
                     }}
                   >
-                    {/* Código es el dato principal — weight 600 para que el ojo lo encuentre primero */}
-                    <td style={{ ...estilos.td, fontWeight: 600, color: '#1A1A1A' }}>{activo.codigo}</td>
+                    <td style={{ ...estilos.td, fontWeight: 600 }}>
+                      <Link
+                        to={`/activos/${activo.id}`}
+                        style={{
+                          color: 'var(--color-primario)',
+                          textDecoration: hoveredActivo === activo.id ? 'underline' : 'none',
+                          background: hoveredActivo === activo.id ? 'rgba(164,198,58,0.15)' : 'transparent',
+                          borderRadius: 4,
+                          padding: '2px 4px',
+                          transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={() => setHoveredActivo(activo.id)}
+                        onMouseLeave={() => setHoveredActivo(null)}
+                      >
+                        {activo.codigo}
+                      </Link>
+                    </td>
                     <td style={estilos.td}>{ETIQUETA_TIPO[activo.tipo] ?? activo.tipo}</td>
                     <td style={estilos.td}><EstadoBadge estado={estadoVisual(activo)} /></td>
                     <td style={{ ...estilos.td, color: C.gris }}>{formatFecha(activo.fechaProximaInspeccion)}</td>
-                    {/* Subestación: dato de localización, color normal */}
                     <td style={{ ...estilos.td, color: '#1A1A1A' }} className="col-secundaria">{activo.subestacion?.nombre ?? '—'}</td>
-                    {/* Fabricante: dato de catálogo, el menos urgente — gris suave */}
                     <td style={{ ...estilos.td, color: C.gris }} className="col-secundaria">{activo.fabricante}</td>
-                    <td style={{ ...estilos.td, textAlign: 'right' }}>
-                      <Link
-                        to={`/activos/${activo.id}`}
-                        title="Ver detalle"
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                          padding: '0.25rem 0.65rem', borderRadius: 999,
-                          fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap',
-                          background: 'rgba(164,198,58,0.12)', color: C.primario,
-                          border: `1.5px solid ${C.primario}`,
-                          outline: 'none', transition: 'all 0.2s ease',
-                        }}
-                        onMouseEnter={e => {
-                          e.currentTarget.style.background = C.primario;
-                          e.currentTarget.style.color = '#fff';
-                        }}
-                        onMouseLeave={e => {
-                          e.currentTarget.style.background = 'rgba(164,198,58,0.12)';
-                          e.currentTarget.style.color = C.primario;
-                        }}
-                      >
-                        <Eye size={13} />
-                        Ver activo
-                      </Link>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -386,14 +386,26 @@ export default function Activos() {
           </div>
 
           {/* Paginación */}
-          {paginacion.totalPaginas > 1 && (
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginTop: '1.25rem', alignItems: 'center' }}>
-              <button className="btn-secundario" disabled={pagina <= 1} onClick={() => setPagina(p => p - 1)}>←</button>
-              <span style={{ fontSize: '0.875rem', color: '#666' }}>
-                Página {paginacion.pagina} de {paginacion.totalPaginas}
-              </span>
-              <button className="btn-secundario" disabled={pagina >= paginacion.totalPaginas} onClick={() => setPagina(p => p + 1)}>→</button>
-            </div>
+          {mostrarDadosDeBaja ? (
+            totalPaginasFiltradas > 1 && (
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginTop: '1.25rem', alignItems: 'center' }}>
+                <button className="btn-secundario" disabled={paginaFiltrada <= 1} onClick={() => setPaginaFiltrada(p => p - 1)}>←</button>
+                <span style={{ fontSize: '0.875rem', color: '#666' }}>
+                  Página {paginaFiltrada} de {totalPaginasFiltradas}
+                </span>
+                <button className="btn-secundario" disabled={paginaFiltrada >= totalPaginasFiltradas} onClick={() => setPaginaFiltrada(p => p + 1)}>→</button>
+              </div>
+            )
+          ) : (
+            paginacion.totalPaginas > 1 && (
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginTop: '1.25rem', alignItems: 'center' }}>
+                <button className="btn-secundario" disabled={pagina <= 1} onClick={() => setPagina(p => p - 1)}>←</button>
+                <span style={{ fontSize: '0.875rem', color: '#666' }}>
+                  Página {paginacion.pagina} de {paginacion.totalPaginas}
+                </span>
+                <button className="btn-secundario" disabled={pagina >= paginacion.totalPaginas} onClick={() => setPagina(p => p + 1)}>→</button>
+              </div>
+            )
           )}
         </>
       )}

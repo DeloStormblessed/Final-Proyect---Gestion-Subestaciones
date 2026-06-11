@@ -103,7 +103,7 @@ export default function Chat() {
       {error && <p className="banner-error" style={{ marginBottom: '0.5rem' }}>{error}</p>}
 
       {/* Input de mensaje */}
-      <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--color-fondo)', borderRadius: 10, padding: '0.75rem', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--color-fondo)', borderRadius: 10, padding: '0.75rem', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
         <textarea
           value={input}
           onChange={e => setInput(e.target.value)}

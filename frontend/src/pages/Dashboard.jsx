@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Eye } from 'lucide-react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
   LineChart, Line, XAxis, CartesianGrid,
@@ -8,6 +7,8 @@ import {
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetch } from '../lib/apiNode.js';
 import TipoBadge from '../components/TipoBadge.jsx';
+import EstadoBadge from '../components/EstadoBadge.jsx';
+import { derivarEstado } from '../lib/estadoVisual.js';
 
 const C = {
   primario:  '#A4C63A',
@@ -165,6 +166,7 @@ export default function Dashboard() {
   // null = mostrar último punto por defecto; se actualiza con el hover
   const [activeIdx, setActiveIdx] = useState(null);
   const [hoveredRow, setHoveredRow] = useState(null);
+  const [hoveredActivo, setHoveredActivo] = useState(null);
 
   useEffect(() => {
     const semanas = ultimasSemanas(6);
@@ -339,13 +341,12 @@ export default function Dashboard() {
                 <table style={s.tabla}>
                   <thead>
                     <tr>
-                      <th style={s.th}>Tipo</th>
+                      <th style={s.th}>Fecha</th>
                       <th style={s.th}>Activo</th>
+                      <th style={s.th}>Estado</th>
+                      <th style={s.th}>Tipo</th>
                       <th style={s.th}>Resultado</th>
-                      {/* col-secundaria: se oculta en móvil (≤640px) para dar espacio a las columnas principales */}
-                      <th style={s.th} className="col-secundaria">Fecha</th>
                       <th style={s.th} className="col-secundaria">Técnico</th>
-                      <th style={{ ...s.th, width: '130px' }}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -359,43 +360,34 @@ export default function Dashboard() {
                           transition: 'background 0.1s',
                         }}
                       >
-                        <td style={s.td}><TipoBadge tipo={ot.tipo} /></td>
-                        {/* Activo es el dato principal — weight 600 para que el ojo lo encuentre primero */}
-                        <td style={{ ...s.td, fontWeight: 600, color: '#1A1A1A' }}>{ot.activo?.codigo ?? '—'}</td>
-                        <td style={{ ...s.td, color: ot.resultado === 'NO_CONFORME' ? C.rojo : ot.resultado === 'CONFORME' ? C.primario : '#1A1A1A', fontWeight: 600 }}>
-                          {ot.resultado ?? '—'}
-                        </td>
-                        {/* Fecha y Técnico son contexto secundario — gris para no competir con Activo */}
-                        <td style={{ ...s.td, color: C.gris }} className="col-secundaria">{formatFecha(ot.fechaIntervencion)}</td>
-                        <td style={{ ...s.td, color: C.gris }} className="col-secundaria">{ot.autor?.nombre ?? '—'}</td>
-                        <td style={{ ...s.td, textAlign: 'right' }}>
-                          {/* ot.activo.id confirmado en dashboard/service.js línea 126 */}
-                          {ot.activo?.id && (
+                        <td style={{ ...s.td, color: C.gris, fontSize: '0.82rem' }}>{formatFecha(ot.fechaIntervencion)}</td>
+                        <td style={{ ...s.td, fontWeight: 600 }}>
+                          {ot.activo?.id ? (
                             <Link
                               to={`/activos/${ot.activo.id}`}
                               style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                                padding: '0.25rem 0.65rem', borderRadius: 999,
-                                fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap',
-                                background: 'rgba(164,198,58,0.12)', color: C.primario,
-                                border: `2px solid ${C.primario}`,
-                                outline: 'none', boxShadow: 'none',
-                                transition: 'all 0.2s ease',
+                                color: C.primario,
+                                textDecoration: hoveredActivo === ot.id ? 'underline' : 'none',
+                                background: hoveredActivo === ot.id ? 'rgba(164,198,58,0.15)' : 'transparent',
+                                borderRadius: 4,
+                                padding: '2px 4px',
+                                transition: 'background 0.15s',
                               }}
-                              onMouseEnter={e => {
-                                e.currentTarget.style.background = C.primario;
-                                e.currentTarget.style.color = '#fff';
-                              }}
-                              onMouseLeave={e => {
-                                e.currentTarget.style.background = '#fff';
-                                e.currentTarget.style.color = C.primario;
-                              }}
+                              onMouseEnter={() => setHoveredActivo(ot.id)}
+                              onMouseLeave={() => setHoveredActivo(null)}
                             >
-                              <Eye size={13} />
-                              Ver activo
+                              {ot.activo.codigo}
                             </Link>
-                          )}
+                          ) : '—'}
                         </td>
+                        <td style={s.td}>
+                          <EstadoBadge estado={derivarEstado(ot.cicloVidaNueva, ot.disponibilidadNueva)} />
+                        </td>
+                        <td style={s.td}><TipoBadge tipo={ot.tipo} /></td>
+                        <td style={{ ...s.td, color: ot.resultado === 'NO_CONFORME' ? C.rojo : ot.resultado === 'CONFORME' ? C.primario : '#1A1A1A', fontWeight: 600 }}>
+                          {ot.resultado === 'NO_CONFORME' ? 'NO CONFORME' : ot.resultado ?? '—'}
+                        </td>
+                        <td style={{ ...s.td, color: C.gris }} className="col-secundaria">{ot.autor?.nombre ?? '—'}</td>
                       </tr>
                     ))}
                   </tbody>
