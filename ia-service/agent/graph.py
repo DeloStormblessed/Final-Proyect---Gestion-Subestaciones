@@ -12,7 +12,7 @@ Node no las toca.
 """
 
 from langchain_groq import ChatGroq
-from langchain_core.messages import trim_messages
+from langchain_core.messages import trim_messages, SystemMessage
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
@@ -76,14 +76,20 @@ def build_agent(checkpointer: AsyncPostgresSaver):
     )
 
     def _trim(messages):
-        # token_counter=llm usa get_num_tokens_from_messages() vía tiktoken,
-        # que es la mejor aproximación disponible para Llama 3 sin tokenizador oficial.
-        # 3 500 tokens reservados para historial deja margen para tool schemas (~1 500)
-        # y system prompt (~350) dentro del límite de Groq sin desperdiciar contexto.
+        # state_modifier y messages_modifier son mutuamente excluyentes en LangGraph,
+        # así que inyectamos el SystemMessage aquí antes de recortar.
+        # Filtramos cualquier SystemMessage previo para no duplicarlo si el checkpointer
+        # ya lo guardó en el hilo, luego lo reponemos siempre al inicio.
+        conversation = [m for m in messages if not isinstance(m, SystemMessage)]
+        with_system = [SystemMessage(content=SYSTEM_PROMPT)] + conversation
+
+        # token_counter=llm usa get_num_tokens_from_messages() vía tiktoken:
+        # mejor aproximación disponible para Llama 3 sin tokenizador oficial.
+        # 3 500 tokens para historial + ~1 500 tool schemas + ~350 system = ~5 350 total,
+        # muy por debajo del rate-limit de Groq por minuto.
         # Los ToolMessages viejos (los más pesados) se descartan primero (strategy="last").
-        # El checkpointer los conserva en Postgres para el historial de la UI.
         return trim_messages(
-            messages,
+            with_system,
             max_tokens=3500,
             strategy="last",
             token_counter=llm,
@@ -95,6 +101,5 @@ def build_agent(checkpointer: AsyncPostgresSaver):
         model=llm,
         tools=DOMAIN_TOOLS,
         checkpointer=checkpointer,
-        state_modifier=SYSTEM_PROMPT,
         messages_modifier=_trim,
     )
