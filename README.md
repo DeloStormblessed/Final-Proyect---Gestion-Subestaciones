@@ -5,7 +5,7 @@ Aplicación fullstack para la gestión de activos de subestaciones eléctricas c
 ---
 ## Enlace al despliegue
 
-https://final-proyect-gestion-subestaciones.vercel.app/login
+https://final-proyect-gestion-subestaciones.vercel.app/
 
 ---
 ## Estructura del repositorio
