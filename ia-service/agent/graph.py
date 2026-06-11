@@ -12,7 +12,6 @@ Node no las toca.
 """
 
 from langchain_groq import ChatGroq
-from langchain_core.messages import trim_messages, SystemMessage
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
@@ -75,31 +74,9 @@ def build_agent(checkpointer: AsyncPostgresSaver):
         temperature=0,
     )
 
-    def _trim(messages):
-        conversation = [m for m in messages if not isinstance(m, SystemMessage)]
-        with_system = [SystemMessage(content=SYSTEM_PROMPT)] + conversation
-
-        # Aproximación ~4 chars/token: no requiere transformers ni tiktoken.
-        # Suficiente para mantener el contexto por debajo del rate-limit de Groq.
-        def _contar(msgs):
-            return sum(len(str(getattr(m, "content", ""))) // 4 for m in msgs)
-
-        return trim_messages(
-            with_system,
-            max_tokens=3500,
-            strategy="last",
-            token_counter=_contar,
-            include_system=True,
-            allow_partial=False,
-        )
-
     return create_react_agent(
         model=llm,
         tools=DOMAIN_TOOLS,
         checkpointer=checkpointer,
-        # messages_modifier está deprecado en LangGraph 0.2.x: el wrapper interno lo
-        # convierte a state_modifier pero deja el original, causando "got values for both".
-        # state_modifier acepta callable en esta versión: recibe los mensajes y devuelve
-        # la lista modificada — mismo contrato que messages_modifier.
-        state_modifier=_trim,
+        state_modifier=SYSTEM_PROMPT,
     )
