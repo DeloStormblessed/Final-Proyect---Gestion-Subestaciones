@@ -76,23 +76,19 @@ def build_agent(checkpointer: AsyncPostgresSaver):
     )
 
     def _trim(messages):
-        # state_modifier y messages_modifier son mutuamente excluyentes en LangGraph,
-        # así que inyectamos el SystemMessage aquí antes de recortar.
-        # Filtramos cualquier SystemMessage previo para no duplicarlo si el checkpointer
-        # ya lo guardó en el hilo, luego lo reponemos siempre al inicio.
         conversation = [m for m in messages if not isinstance(m, SystemMessage)]
         with_system = [SystemMessage(content=SYSTEM_PROMPT)] + conversation
 
-        # token_counter=llm usa get_num_tokens_from_messages() vía tiktoken:
-        # mejor aproximación disponible para Llama 3 sin tokenizador oficial.
-        # 3 500 tokens para historial + ~1 500 tool schemas + ~350 system = ~5 350 total,
-        # muy por debajo del rate-limit de Groq por minuto.
-        # Los ToolMessages viejos (los más pesados) se descartan primero (strategy="last").
+        # Aproximación ~4 chars/token: no requiere transformers ni tiktoken.
+        # Suficiente para mantener el contexto por debajo del rate-limit de Groq.
+        def _contar(msgs):
+            return sum(len(str(getattr(m, "content", ""))) // 4 for m in msgs)
+
         return trim_messages(
             with_system,
             max_tokens=3500,
             strategy="last",
-            token_counter=llm,
+            token_counter=_contar,
             include_system=True,
             allow_partial=False,
         )
