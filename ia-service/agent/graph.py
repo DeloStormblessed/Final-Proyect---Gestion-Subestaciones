@@ -101,5 +101,9 @@ def build_agent(checkpointer: AsyncPostgresSaver):
         model=llm,
         tools=DOMAIN_TOOLS,
         checkpointer=checkpointer,
-        messages_modifier=_trim,
+        # messages_modifier está deprecado en LangGraph 0.2.x: el wrapper interno lo
+        # convierte a state_modifier pero deja el original, causando "got values for both".
+        # state_modifier acepta callable en esta versión: recibe los mensajes y devuelve
+        # la lista modificada — mismo contrato que messages_modifier.
+        state_modifier=_trim,
     )
