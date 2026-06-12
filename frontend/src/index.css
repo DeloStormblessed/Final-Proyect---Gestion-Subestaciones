@@ -110,6 +110,25 @@ input, select, textarea {
    Las propiedades viven AQUÍ y no inline porque el inline pisa a la clase:
    lo que la media query debe poder cambiar tiene que salir del JSX. */
 
+/* KPIs del dashboard: auto-fit en desktop; en tablet, 5 columnas explícitas
+   para que la quinta card no quede huérfana en una segunda fila */
+.dash-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+}
+
+/* Badges de estado/tipo: el min-width alinea columnas en desktop; en tablet
+   se anula (y se compacta la badge) para que no se recorte en celdas de ~110px.
+   font-size y padding viven aquí (no inline) para que la media query pueda actuar. */
+.badge-estado,
+.badge-tipo {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+.badge-estado { min-width: 8.5rem; }
+.badge-tipo   { min-width: 6rem; }
+
 /* Grid principal del dashboard: gráfico (2fr) + columna derecha (1fr) */
 .dash-principal {
   display: grid;
@@ -140,6 +159,19 @@ input, select, textarea {
 }
 
 @media (max-width: 1024px) {
+  .dash-kpis { grid-template-columns: repeat(5, 1fr); gap: 0.65rem; }
+
+  /* Las badges se compactan pero conservan ancho UNIFORME por familia:
+     el min-width se recalibra a la etiqueta más larga con la fuente reducida
+     ("Fuera de servicio" / "Instalación"), no se anula */
+  .badge-estado,
+  .badge-tipo {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+  }
+  .badge-estado { min-width: 7rem; }
+  .badge-tipo   { min-width: 5rem; }
+
   /* El dashboard se apila: gráfico a ancho completo, luego donuts, luego top */
   .dash-principal { grid-template-columns: 1fr; }
 

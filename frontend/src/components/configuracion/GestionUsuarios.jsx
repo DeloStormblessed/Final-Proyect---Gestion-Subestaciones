@@ -223,8 +223,20 @@ export default function GestionUsuarios() {
           <table style={estilos.tabla}>
             <thead>
               <tr>
-                {['Nombre', 'Email', 'Rol', 'Activo', 'Cambiar rol', 'Activación'].map(col => (
-                  <th key={col} style={estilos.th}>{col}</th>
+                {/* Rol y Activo son col-secundaria: en tablet se ocultan sin perder
+                    información — el select ya muestra el rol actual y el botón de
+                    activación comunica el estado (rojo "Desactivar" = está activo) */}
+                {[
+                  { col: 'Nombre' },
+                  { col: 'Email' },
+                  { col: 'Rol', secundaria: true },
+                  { col: 'Activo', secundaria: true },
+                  { col: 'Cambiar rol' },
+                  { col: 'Activación' },
+                ].map(({ col, secundaria }) => (
+                  <th key={col} style={estilos.th} className={secundaria ? 'col-secundaria' : undefined}>
+                    {col}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -255,10 +267,10 @@ export default function GestionUsuarios() {
                     >
                       <td style={estilos.td}>{u.nombre}</td>
                       <td style={{ ...estilos.td, color: '#9AA0A6' }}>{u.email}</td>
-                      <td style={estilos.td}>
+                      <td style={estilos.td} className="col-secundaria">
                         <RolBadge rol={u.rol} />
                       </td>
-                      <td style={estilos.td}>
+                      <td style={estilos.td} className="col-secundaria">
                         <span style={{
                           ...estiloBadge,
                           background: u.activo ? '#16A34A' : '#EF4444',

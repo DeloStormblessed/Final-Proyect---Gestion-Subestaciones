@@ -17,15 +17,14 @@ const ETIQUETAS = {
 export default function TipoBadge({ tipo }) {
   const { bg, texto } = COLORES[tipo] ?? { bg: '#64748B', texto: '#fff' };
   return (
-    <span style={{
+    // min-width, font-size y padding viven en .badge-tipo (index.css):
+    // en tablet se compactan vía media query, y el inline lo impediría
+    <span className="badge-tipo" style={{
       display: 'inline-block',
-      minWidth: '6rem',
       textAlign: 'center',
       background: bg,
       color: texto,
-      padding: '0.25rem 0.5rem',
       borderRadius: '6px',
-      fontSize: '0.75rem',
       fontWeight: 600,
       whiteSpace: 'nowrap',
     }}>

@@ -15,15 +15,14 @@ const ETIQUETAS = {
 export default function EstadoBadge({ estado }) {
   const color = COLORES[estado] ?? 'var(--color-gris)';
   return (
-    <span style={{
+    // min-width, font-size y padding viven en .badge-estado (index.css):
+    // en tablet se compactan vía media query, y el inline lo impediría
+    <span className="badge-estado" style={{
       display: 'inline-block',
-      minWidth: '8.5rem',
       textAlign: 'center',
       background: color,
       color: '#fff',
-      padding: '0.25rem 0.5rem',
       borderRadius: '6px',
-      fontSize: '0.75rem',
       fontWeight: 600,
       whiteSpace: 'nowrap',
     }}>

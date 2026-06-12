@@ -163,8 +163,9 @@ export default function ActivoDetalle() {
           </p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            {/* min-width en .tabla-historial-ot (CSS): en tablet se anula y se oculta
-                Técnico (col-secundaria); Descripción se queda, es la sustancia del historial */}
+            {/* min-width en .tabla-historial-ot (CSS): en tablet se anula. Aquí no se
+                oculta ninguna columna: el historial completo (incluido Técnico) es la
+                sustancia de la ficha; las badges compactadas hacen que quepa */}
             <table className="tabla-historial-ot" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', tableLayout: 'fixed' }}>
               <thead>
                 <tr>
@@ -172,7 +173,7 @@ export default function ActivoDetalle() {
                   <th style={estilos.th}>Estado</th>
                   <th style={estilos.th}>Tipo</th>
                   <th style={estilos.th}>Resultado</th>
-                  <th style={estilos.th} className="col-secundaria">Técnico</th>
+                  <th style={estilos.th}>Técnico</th>
                   <th style={estilos.th}>Descripción</th>
                 </tr>
               </thead>
@@ -204,7 +205,7 @@ export default function ActivoDetalle() {
                     }}>
                       {ot.resultado === 'NO_CONFORME' ? 'NO CONFORME' : ot.resultado ?? '—'}
                     </td>
-                    <td style={{ ...estilos.td, color: '#9AA0A6' }} className="col-secundaria">{ot.autor?.nombre ?? '—'}</td>
+                    <td style={{ ...estilos.td, color: '#9AA0A6' }}>{ot.autor?.nombre ?? '—'}</td>
                     <td
                       style={{
                         ...estilos.td,

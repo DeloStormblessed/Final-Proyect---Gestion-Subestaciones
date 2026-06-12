@@ -216,8 +216,9 @@ export default function Dashboard() {
 
 
       {/* ── KPI cards ── */}
-      {/* auto-fit colapsa a 2 columnas en tablet y a 1 en móvil sin media queries */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
+      {/* .dash-kpis: auto-fit en desktop; 5 columnas fijas en tablet para que
+          la quinta no quede huérfana en una segunda fila */}
+      <div className="dash-kpis">
         <KpiCard titulo="Activos totales"  valor={totalActivos}                 color={C.nav} />
         <KpiCard titulo="En servicio"      valor={activosPorEstado.EN_SERVICIO} color={C.primario} valorArriba />
         <KpiCard titulo="Averiados"        valor={activosPorEstado.AVERIADO}    color={C.rojo}    valorArriba />
