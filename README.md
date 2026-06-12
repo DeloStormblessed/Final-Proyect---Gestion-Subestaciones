@@ -36,9 +36,10 @@ este registro como cimiento. El detalle, en
 [Alcance y limitaciones](#alcance-y-limitaciones-decisiones-conscientes).
 
 ---
+
 ## Estructura del repositorio
 
-```
+```text
 gestion-subestaciones/
 ├── frontend/          # React + Vite → Vercel
 ├── backend/           # GMAO Node (dominio, auth, OTs) → Railway
@@ -79,22 +80,37 @@ activo. El estado son **dos ejes independientes**, no un enum único:
 (`resultadoIntervencion`), *en qué condición quedó el equipo*. Reponer un equipo a
 servicio es un desenlace (`OPERATIVO`), no un "correctivo de reposición".
 
+Dos ejes, dos diagramas.
+
+**Eje 1 — `cicloVida`** (lo mueven INSTALACION y BAJA):
+
 ```mermaid
 stateDiagram-v2
     direction LR
-    [*] --> EN_SERVICIO : INSTALACION (crea el activo, atómico con su OT)
+    [*] --> OPERATIVO : INSTALACION
+    OPERATIVO --> DADO_DE_BAJA : BAJA
+    DADO_DE_BAJA --> [*]
+```
 
-    state "cicloVida = OPERATIVO" as OP {
-        direction LR
-        EN_SERVICIO --> AVERIADO : INSPECCION NO_CONFORME · desenlace DEFECTUOSO
-        AVERIADO --> EN_SERVICIO : CORRECTIVO con desenlace OPERATIVO
-        EN_SERVICIO --> FUERA_DE_SERVICIO : desenlace EN_DESCARGO
-        FUERA_DE_SERVICIO --> EN_SERVICIO : desenlace OPERATIVO
-        FUERA_DE_SERVICIO --> AVERIADO : desenlace DEFECTUOSO
-        AVERIADO --> FUERA_DE_SERVICIO : CORRECTIVO con desenlace EN_DESCARGO
-    }
+**Eje 2 — `disponibilidad`** (lo mueven INSPECCION, PREVENTIVO y CORRECTIVO; solo
+significativo mientras el activo está OPERATIVO). Las etiquetas son el *desenlace
+declarado* en la OT:
 
-    OP --> DADO_DE_BAJA : BAJA (terminal, congela la disponibilidad)
+```mermaid
+flowchart LR
+    INST([INSTALACION]) --> ES
+
+    ES["EN_SERVICIO"]:::verde
+    AV["AVERIADO"]:::rojo
+    FS["FUERA_DE_SERVICIO"]:::ambar
+
+    ES -- "NO_CONFORME · DEFECTUOSO" --> AV
+    AV -- "OPERATIVO<br/>(solo correctivo)" --> ES
+    ES -- "EN_DESCARGO" --> FS
+    FS -- "OPERATIVO" --> ES
+    FS -- "DEFECTUOSO" --> AV
+    AV -- "EN_DESCARGO<br/>(solo correctivo)" --> FS
+
 ```
 
 Qué mueve cada tipo de OT:
@@ -107,7 +123,29 @@ Qué mueve cada tipo de OT:
 | `CORRECTIVO` | Solo `disponibilidad` | `OPERATIVO` · `DEFECTUOSO` · `EN_DESCARGO` |
 | `BAJA` | `cicloVida` → DADO_DE_BAJA (terminal) | — |
 
-Reglas finas (las que marcan la diferencia):
+**Tabla de transiciones** — la especificación exhaustiva (estado de partida × evento →
+estado resultante). Filas: el evento (tipo de OT y su resultado). Columnas: la
+`disponibilidad` de partida (siempre con `cicloVida = OPERATIVO`; sobre `DADO_DE_BAJA`
+**todo** evento se rechaza con 422):
+
+| Evento (tipo · resultado) | desde EN_SERVICIO | desde AVERIADO | desde FUERA_DE_SERVICIO |
+| --- | :-: | :-: | :-: |
+| `INSPECCION` · CONFORME | EN_SERVICIO ¹ | *no-op* ² | *no-op* ² |
+| `INSPECCION` · NO_CONFORME | **AVERIADO** | *no-op* ² | *no-op* ² |
+| `PREVENTIVO` · OPERATIVO | EN_SERVICIO | ✗ 422 | **EN_SERVICIO** |
+| `PREVENTIVO` · DEFECTUOSO | **AVERIADO** | ✗ 422 | **AVERIADO** |
+| `PREVENTIVO` · EN_DESCARGO | **FUERA_DE_SERVICIO** | ✗ 422 | FUERA_DE_SERVICIO |
+| `CORRECTIVO` · OPERATIVO | EN_SERVICIO | **EN_SERVICIO** | **EN_SERVICIO** |
+| `CORRECTIVO` · DEFECTUOSO | **AVERIADO** | AVERIADO | **AVERIADO** |
+| `CORRECTIVO` · EN_DESCARGO | **FUERA_DE_SERVICIO** | **FUERA_DE_SERVICIO** | FUERA_DE_SERVICIO |
+| `BAJA` | **DADO_DE_BAJA** ³ | **DADO_DE_BAJA** ³ | **DADO_DE_BAJA** ³ |
+
+En **negrita**, las celdas que cambian el estado. ¹ Recalcula `fechaProximaInspeccion`
+según el intervalo normativo. ² La OT se registra como evidencia documental pero no toca
+el estado (inspeccionar diagnostica, no repara). ³ Mueve `cicloVida`; la `disponibilidad`
+queda congelada en su último valor.
+
+Reglas finas:
 
 - **Activo `DADO_DE_BAJA`**: ninguna OT es válida (422). Un equipo retirado no vuelve.
 - **`PREVENTIVO` sobre `AVERIADO`**: rechazado (422). Una avería confirmada exige
@@ -287,18 +325,19 @@ Mejoras menores e independientes de ese bloque:
 
 | Email | Contraseña | Rol | Permisos |
 | --- | --- | --- | --- |
-| admin@gmao.com | admin123 | ADMIN | Acceso total: activos, OTs (todos los tipos), subestaciones, usuarios |
-| tecnico@gmao.com | tecnico123 | TECNICO | Activos y OTs (todos los tipos), sin gestión de usuarios ni subestaciones |
-| tecnico2@gmao.com | tecnico123 | TECNICO | Igual que tecnico |
-| operario@gmao.com | operario123 | OPERARIO | Solo lectura + registrar inspecciones (`INSPECCION`) |
-| operario2@gmao.com | operario123 | OPERARIO | Igual que operario |
+| `admin@gmao.com` | admin123 | ADMIN | Acceso total: activos, OTs (todos los tipos), subestaciones, usuarios |
+| `tecnico@gmao.com` | tecnico123 | TECNICO | Activos y OTs (todos los tipos), sin gestión de usuarios ni subestaciones |
+| `tecnico2@gmao.com` | tecnico123 | TECNICO | Igual que tecnico |
+| `operario@gmao.com` | operario123 | OPERARIO | Solo lectura + registrar inspecciones (`INSPECCION`) |
+| `operario2@gmao.com` | operario123 | OPERARIO | Igual que operario |
 
 ---
 
 ## Variables de entorno
 
 ### `backend/.env`
-```
+
+```text
 DATABASE_URL=postgresql://...
 JWT_SECRET=...
 PORT=3000
@@ -307,7 +346,8 @@ WEBHOOK_URL=...                 # Production URL del webhook de n8n; vacía = no
 ```
 
 ### `ia-service/.env`
-```
+
+```text
 DATABASE_URL=postgresql://...   # mismo Postgres; el agente solo gestiona sus tablas (checkpointer)
 NODE_API_URL=http://localhost:3000/api/v1
 JWT_SECRET=...                  # mismo secreto que Node para validar el token
@@ -317,7 +357,8 @@ ALLOWED_ORIGIN=...              # URL del frontend en prod; vacía = cualquier o
 ```
 
 ### `frontend/.env`
-```
+
+```text
 VITE_NODE_API_URL=http://localhost:3000
 VITE_IA_API_URL=http://localhost:8000
 ```
