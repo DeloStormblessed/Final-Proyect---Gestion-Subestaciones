@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import Topbar from './Topbar.jsx';
+import ChatWidget from './ChatWidget.jsx';
 
 // SVG inline — sin dependencias de iconografía externa
 const IconDashboard = ({ size = 20, color = 'currentColor' }) => (
@@ -31,12 +32,6 @@ const IconOrdenes = ({ size = 20, color = 'currentColor' }) => (
   </svg>
 );
 
-const IconChat = ({ size = 20, color = 'currentColor' }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-  </svg>
-);
-
 const IconLogout = ({ size = 18, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -51,11 +46,11 @@ const IconLogo = ({ size = 20, color = 'currentColor' }) => (
   </svg>
 );
 
+// El asistente IA ya no es una ruta: es el widget flotante (ChatWidget)
 const NAV_ITEMS = [
   { to: '/dashboard',        label: 'Dashboard', Icon: IconDashboard },
   { to: '/activos',          label: 'Activos',   Icon: IconActivos   },
   { to: '/ordenes-trabajo',  label: 'Órdenes',   Icon: IconOrdenes   },
-  { to: '/chat',             label: 'Asistente', Icon: IconChat      },
 ];
 
 export default function Layout() {
@@ -132,6 +127,10 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Asistente IA flotante: dentro de Layout para que su estado (la
+          conversación) sobreviva a la navegación y muera con el logout */}
+      <ChatWidget />
     </div>
   );
 }

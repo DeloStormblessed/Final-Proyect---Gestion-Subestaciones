@@ -7,7 +7,6 @@ import Registro from './pages/Registro.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Activos from './pages/Activos.jsx';
 import ActivoDetalle from './pages/ActivoDetalle.jsx';
-import Chat from './pages/Chat.jsx';
 import OrdenesTrabajo from './pages/OrdenesTrabajo.jsx';
 import Configuracion from './pages/Configuracion.jsx';
 
@@ -24,7 +23,7 @@ export default function App() {
           <Route path="/activos"          element={<Activos />} />
           <Route path="/activos/:id"      element={<ActivoDetalle />} />
           <Route path="/ordenes-trabajo"  element={<OrdenesTrabajo />} />
-          <Route path="/chat"             element={<Chat />} />
+          {/* El chat IA ya no es ruta: vive como widget flotante en Layout */}
 
           {/* Rutas exclusivas de ADMIN: RutaAdmin redirige si rol ≠ ADMIN */}
           <Route element={<RutaAdmin />}>
@@ -33,7 +32,10 @@ export default function App() {
         </Route>
       </Route>
 
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      {/* Catch-all hacia /dashboard, no /login: si hay sesión se entra directo;
+          si no la hay, RutaProtegida ya rebota a /login. Antes apuntaba a /login
+          y mostraba el formulario aunque el token siguiera vivo en localStorage. */}
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }
