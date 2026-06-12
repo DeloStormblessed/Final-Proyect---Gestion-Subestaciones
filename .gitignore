@@ -44,7 +44,7 @@ coverage/
 
 # Contexto Claude
 .claude/worktrees/heuristic-cartwright-2030ec
-docs/
+/docs/
 CLAUDE.md
 
 # Certificados y claves privadas
