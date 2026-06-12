@@ -2,60 +2,18 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { apiFetchIA } from '../lib/apiIA.js';
 
-// Hilo de conversación por sesión de pestaña, NO el hilo "{userId}-default" eterno
-// del backend: el historial acumulado se reenvía al LLM en cada llamada de cada turno,
-// así que un hilo sin fin encarece todas las preguntas (y agota el rate-limit de Groq).
-// sessionStorage (no localStorage): la conversación sobrevive a recargas pero cada
-// pestaña/sesión nueva empieza con un hilo limpio. Clave por usuario para no heredar
-// el hilo de otro login en la misma pestaña.
-function claveConversacion(usuarioId) {
-  return `chat-conversacion-${usuarioId}`;
-}
-
 export default function Chat() {
   const { token, usuario } = useAuth();
   const [mensajes, setMensajes] = useState([]);
   const [input, setInput] = useState('');
-  const [conversationId, setConversationId] = useState(() =>
-    usuario ? sessionStorage.getItem(claveConversacion(usuario.id)) : null
-  );
-  const [cargandoHistorial, setCargandoHistorial] = useState(Boolean(conversationId));
+  // El hilo vive SOLO en el estado del componente: se estrena con el primer
+  // mensaje y muere al salir de la página (navegar o recargar). Así ninguna
+  // pregunta arrastra el historial de visitas anteriores — el historial
+  // acumulado se reenviaría al LLM en cada llamada y encarece cada turno.
+  const [conversationId, setConversationId] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
   const bottomRef = useRef(null);
-
-  // Si la sesión ya tenía conversación, se restaura desde el ia-service al entrar
-  // a /chat (la memoria vive en el checkpointer de Postgres, no en el navegador).
-  // Forma confirmada en routers/chat.py: { conversation_id, mensajes: [{ rol, contenido }] }
-  useEffect(() => {
-    if (!conversationId) return;
-    let cancelado = false;
-    (async () => {
-      try {
-        const data = await apiFetchIA(`/api/chat/history/${conversationId}`, {}, token);
-        if (!cancelado) setMensajes(data.mensajes ?? []);
-      } catch {
-        // Historial irrecuperable (hilo borrado, servicio caído…): no es bloqueante,
-        // se descarta el id y la siguiente pregunta estrena conversación.
-        if (!cancelado) {
-          sessionStorage.removeItem(claveConversacion(usuario.id));
-          setConversationId(null);
-        }
-      } finally {
-        if (!cancelado) setCargandoHistorial(false);
-      }
-    })();
-    return () => { cancelado = true; };
-    // Solo al montar: el id solo cambia desde esta misma página
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function nuevaConversacion() {
-    sessionStorage.removeItem(claveConversacion(usuario.id));
-    setConversationId(null);
-    setMensajes([]);
-    setError('');
-  }
 
   // Scroll automático al último mensaje
   useEffect(() => {
@@ -73,7 +31,7 @@ export default function Chat() {
     setEnviando(true);
 
     try {
-      // El id lo genera el CLIENTE (hilo nuevo por sesión); si no se enviara,
+      // El id lo genera el CLIENTE (hilo nuevo por visita); si no se enviara,
       // el backend caería en el hilo "-default" acumulativo que queremos evitar.
       // Prefijo con el id de usuario: el hilo queda atribuible y sin colisiones.
       const id = conversationId ?? `${usuario.id}-${crypto.randomUUID()}`;
@@ -85,7 +43,6 @@ export default function Chat() {
       }, token);
 
       setConversationId(data.conversation_id);
-      sessionStorage.setItem(claveConversacion(usuario.id), data.conversation_id);
       setMensajes(prev => [...prev, { rol: 'asistente', contenido: data.respuesta }]);
     } catch (err) {
       setError(err.message);
@@ -105,22 +62,9 @@ export default function Chat() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 130px)', maxWidth: 800, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>
-          Asistente de mantenimiento
-        </h2>
-        {/* Estrenar hilo a demanda: además de mejorar la UX, descarta el historial
-            acumulado que encarece cada turno del agente */}
-        {mensajes.length > 0 && !enviando && (
-          <button
-            onClick={nuevaConversacion}
-            className="btn-secundario"
-            style={{ padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
-          >
-            Nueva conversación
-          </button>
-        )}
-      </div>
+      <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>
+        Asistente de mantenimiento
+      </h2>
 
       {/* Área de mensajes */}
       <div style={{
@@ -135,13 +79,7 @@ export default function Chat() {
         gap: '0.85rem',
         marginBottom: '0.75rem',
       }}>
-        {cargandoHistorial && (
-          <div style={{ textAlign: 'center', color: '#aaa', margin: 'auto', padding: '2rem' }}>
-            Recuperando conversación…
-          </div>
-        )}
-
-        {!cargandoHistorial && mensajes.length === 0 && (
+        {mensajes.length === 0 && (
           <div style={{ textAlign: 'center', color: '#aaa', margin: 'auto', padding: '2rem' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🤖</div>
             <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Hola, {usuario?.nombre?.split(' ')[0] ?? 'operario'}.</p>

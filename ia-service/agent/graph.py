@@ -1,9 +1,9 @@
 """
 Grafo LangGraph del asistente de mantenimiento.
 
-Arquitectura: ReAct (Reason + Act) con dos tools en esta capa:
+Arquitectura: ReAct (Reason + Act) con dos familias de tools:
   - DOMAIN_TOOLS: consultan la API de Node (activos, OTs, dashboard)
-  - RAG_TOOLS: se añaden en la capa de RAG (normativa UNE/IEC) — pendiente
+  - RAG_TOOLS: búsqueda semántica sobre la normativa indexada en Chroma
 
 Memoria: AsyncPostgresSaver con AsyncConnectionPool persiste el historial por
 thread_id en el Postgres compartido. El pool se inicializa una vez al arrancar
@@ -19,20 +19,24 @@ from psycopg_pool import AsyncConnectionPool
 
 from config import settings
 from agent.tools.domain_tool import DOMAIN_TOOLS
+from agent.tools.rag_tool import RAG_TOOLS
 
 # Prompt deliberadamente compacto: viaja en CADA llamada al LLM (2-3 por turno).
 # Aquí solo van reglas de COMPORTAMIENTO (ámbito, cuándo usar tools, formato).
 # El mapeo lenguaje→filtros derivado del schema Prisma vive en los docstrings de
 # las tools (que el modelo también recibe en cada llamada): repartir sin duplicar.
-SYSTEM_PROMPT = """Eres el asistente del GMAO de subestaciones eléctricas. Tu ÚNICO ámbito
-son los datos del sistema: subestaciones, activos, órdenes de trabajo, inspecciones y KPIs.
+SYSTEM_PROMPT = """Eres el asistente del GMAO de subestaciones eléctricas. Tu ÚNICO ámbito:
+los datos del sistema (subestaciones, activos, órdenes de trabajo, inspecciones, KPIs) y
+la normativa de mantenimiento indexada (buscar_normativa).
 
 Reglas:
 - Pregunta fuera de ese ámbito (cualquier otro tema): responde en UNA frase que solo
   puedes ayudar con el mantenimiento del sistema. Sin herramientas.
 - Saludos o cortesía: responde breve, sin herramientas.
-- Datos del sistema: SIEMPRE con herramientas, nunca de memoria. Responde SOLO con lo
-  que devuelvan; si algo no consta en la base de datos, dilo.
+- Datos del sistema y normativa: SIEMPRE con herramientas, nunca de memoria. Responde
+  SOLO con lo que devuelvan; si algo no consta, dilo.
+- Si usas buscar_normativa, CITA al final las fuentes de los fragmentos usados, entre
+  corchetes y tal como vienen (ej: [UNE-EN 13306:2018]). Nunca omitas la cita.
 - Preguntas de "¿cuántos…?": usa solo_contar=true o dashboard_kpis; NO listes para contar.
 - Elige el filtro más específico posible en la PRIMERA llamada; evita llamadas de tanteo.
 - Sé breve y directo. Responde en español citando códigos y fechas del sistema.
@@ -125,7 +129,7 @@ def build_agent(checkpointer: AsyncPostgresSaver):
 
     return create_react_agent(
         model=llm,
-        tools=DOMAIN_TOOLS,
+        tools=DOMAIN_TOOLS + RAG_TOOLS,
         checkpointer=checkpointer,
         state_modifier=_preparar_mensajes,
     )

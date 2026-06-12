@@ -23,8 +23,9 @@ build/
 .pytest_cache/
 htmlcov/
 
-# Vector store local (ChromaDB — se añade en la capa de RAG)
+# Vector store local y caché de embeddings (se regeneran en el build de Docker)
 chroma_db/
+fastembed_cache/
 
 # Logs
 *.log

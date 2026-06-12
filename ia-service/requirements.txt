@@ -9,4 +9,11 @@ langgraph-checkpoint-postgres==2.0.9
 langchain-groq==0.2.3
 langchain-community==0.3.13
 psycopg[binary,pool]>=3.2.10
-# chromadb se añade en la capa de RAG (requiere compilador C++ en Windows; usa Docker)
+
+# Capa RAG: Chroma persistente embebido (sin servicio aparte) + fastembed para
+# embeddings ONNX locales (modelo multilingüe, sin API key; Groq no da embeddings).
+# chromadb 1.x (núcleo Rust): evita compilar chroma-hnswlib, que no tiene wheel
+# para Python 3.12 en Windows. langchain-core se mantiene en 0.3.x por langgraph.
+chromadb>=1.0,<1.1
+langchain-chroma==0.2.4
+fastembed==0.5.1

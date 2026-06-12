@@ -1,0 +1,150 @@
+{
+  "name": "GMAO — Alertas de mantenimiento",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gmao-averias",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Webhook GMAO",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "a1b2c3d4-0001-4000-8000-00000000000a"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.evento }}",
+                    "rightValue": "ot.averia_detectada",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "averia"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.evento }}",
+                    "rightValue": "ot.correctivo",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "correctivo"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Switch por tipo de evento",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "8616176578:AAGduvEMLDL-Uq7lU2EZZkGKBoVtYqyazsc",
+        "text": "=🔴 AVERÍA DETECTADA\n\nActivo: {{ $json.body.datos.activo.codigo }} ({{ $json.body.datos.activo.tipo }})\nSubestación: {{ $json.body.datos.subestacion.nombre }} ({{ $json.body.datos.subestacion.codigo }})\nInspección NO CONFORME: {{ $json.body.datos.ordenTrabajo.descripcion }}\nDisponibilidad: {{ $json.body.datos.activo.disponibilidadAnterior }} → {{ $json.body.datos.activo.disponibilidadNueva }}\n\n⚠️ Requiere intervención correctiva.\n{{ $json.body.timestamp }}",
+        "additionalFields": {}
+      },
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Telegram — Alerta avería",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [540, 180],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram GMAO"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "8616176578:AAGduvEMLDL-Uq7lU2EZZkGKBoVtYqyazsc",
+        "text": "=🛠️ CORRECTIVO REGISTRADO\n\nActivo: {{ $json.body.datos.activo.codigo }} ({{ $json.body.datos.activo.tipo }})\nSubestación: {{ $json.body.datos.subestacion.nombre }} ({{ $json.body.datos.subestacion.codigo }})\nTrabajo: {{ $json.body.datos.ordenTrabajo.descripcion }}\nDisponibilidad: {{ $json.body.datos.activo.disponibilidadAnterior }} → {{ $json.body.datos.activo.disponibilidadNueva }}\n\n{{ $json.body.timestamp }}",
+        "additionalFields": {}
+      },
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Telegram — Aviso correctivo",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [540, 420],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram GMAO"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook GMAO": {
+      "main": [
+        [
+          {
+            "node": "Switch por tipo de evento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch por tipo de evento": {
+      "main": [
+        [
+          {
+            "node": "Telegram — Alerta avería",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram — Aviso correctivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

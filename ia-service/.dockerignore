@@ -1,0 +1,11 @@
+# El venv local de Windows no debe entrar en la imagen Linux
+.venv/
+__pycache__/
+*.pyc
+
+# La colección se reindexa en el build (RUN scripts/indexar_normativa.py);
+# la local de desarrollo no debe colarse en la imagen
+chroma_db/
+
+# Secretos: las variables van por entorno del orquestador, nunca en la imagen
+.env
