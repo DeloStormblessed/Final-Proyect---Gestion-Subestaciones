@@ -94,6 +94,10 @@ export default function ActivoDetalle() {
   const [modal, setModal] = useState(null); // 'editar' | 'ot' | null
   const [descExpandida, setDescExpandida] = useState(null);
   const [hoveredDesc, setHoveredDesc] = useState(null);
+  // Mismo patrón desplegable que Descripción: si el nombre del técnico no cabe
+  // (ellipsis del td), un clic lo muestra completo
+  const [tecnicoExpandido, setTecnicoExpandido] = useState(null);
+  const [hoveredTecnico, setHoveredTecnico] = useState(null);
   const [hoveredRow, setHoveredRow] = useState(null);
 
   const puedeEditar = usuario?.rol === 'TECNICO' || usuario?.rol === 'ADMIN';
@@ -167,6 +171,19 @@ export default function ActivoDetalle() {
                 oculta ninguna columna: el historial completo (incluido Técnico) es la
                 sustancia de la ficha; las badges compactadas hacen que quepa */}
             <table className="tabla-historial-ot" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', tableLayout: 'fixed' }}>
+              {/* Reparto explícito de columnas: con tableLayout fixed el reparto
+                  equitativo dejaba a las badges menos ancho del que miden y el
+                  overflow:hidden del td las recortaba. Las columnas de badge
+                  reciben su mínimo garantizado; Técnico y Descripción ceden y
+                  son desplegables (clic) cuando su texto no cabe. */}
+              <colgroup>
+                <col style={{ width: '17%' }} />{/* Fecha */}
+                <col style={{ width: '23%' }} />{/* Estado */}
+                <col style={{ width: '17%' }} />{/* Tipo */}
+                <col style={{ width: '17%' }} />{/* Resultado */}
+                <col style={{ width: '12%' }} />{/* Técnico */}
+                <col style={{ width: '14%' }} />{/* Descripción */}
+              </colgroup>
               <thead>
                 <tr>
                   <th style={estilos.th}>Fecha</th>
@@ -205,7 +222,25 @@ export default function ActivoDetalle() {
                     }}>
                       {ot.resultado === 'NO_CONFORME' ? 'NO CONFORME' : ot.resultado ?? '—'}
                     </td>
-                    <td style={{ ...estilos.td, color: '#9AA0A6' }}>{ot.autor?.nombre ?? '—'}</td>
+                    <td
+                      style={{
+                        ...estilos.td,
+                        color: '#9AA0A6',
+                        cursor: 'pointer',
+                        borderRadius: 4,
+                        background: hoveredTecnico === ot.id ? 'rgba(164,198,58,0.10)' : 'transparent',
+                        transition: 'background 0.15s',
+                        ...(tecnicoExpandido === ot.id
+                          ? { whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip' }
+                          : {}),
+                      }}
+                      title={tecnicoExpandido !== ot.id ? 'Ver más' : undefined}
+                      onMouseEnter={() => setHoveredTecnico(ot.id)}
+                      onMouseLeave={() => setHoveredTecnico(null)}
+                      onClick={() => setTecnicoExpandido(prev => prev === ot.id ? null : ot.id)}
+                    >
+                      {ot.autor?.nombre ?? '—'}
+                    </td>
                     <td
                       style={{
                         ...estilos.td,
