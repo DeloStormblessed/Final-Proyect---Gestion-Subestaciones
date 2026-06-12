@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import Activos from './pages/Activos.jsx';
 import ActivoDetalle from './pages/ActivoDetalle.jsx';
 import OrdenesTrabajo from './pages/OrdenesTrabajo.jsx';
+import NoEncontrada from './pages/NoEncontrada.jsx';
 import Configuracion from './pages/Configuracion.jsx';
 
 export default function App() {
@@ -32,10 +33,12 @@ export default function App() {
         </Route>
       </Route>
 
-      {/* Catch-all hacia /dashboard, no /login: si hay sesión se entra directo;
-          si no la hay, RutaProtegida ya rebota a /login. Antes apuntaba a /login
-          y mostraba el formulario aunque el token siguiera vivo en localStorage. */}
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      {/* La raíz redirige a /dashboard: si hay sesión se entra directo;
+          si no la hay, RutaProtegida ya rebota a /login. */}
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+      {/* Cualquier otra ruta desconocida: 404 explícito, no un redirect mudo */}
+      <Route path="*" element={<NoEncontrada />} />
     </Routes>
   );
 }

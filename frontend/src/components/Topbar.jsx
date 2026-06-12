@@ -3,11 +3,11 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 
+// El asistente IA ya no es una ruta: es el widget flotante (ChatWidget)
 const NAV_ITEMS = [
   { to: '/dashboard',        label: 'Dashboard' },
   { to: '/activos',          label: 'Activos'   },
   { to: '/ordenes-trabajo',  label: 'Órdenes'   },
-  { to: '/chat',             label: 'Asistente' },
 ];
 
 const ROL_COLOR = {

@@ -1,12 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../context/AuthContext.jsx';
+import { useAuth, CLAVE_CHAT_SESION } from '../context/AuthContext.jsx';
 import { apiFetchIA } from '../lib/apiIA.js';
 
 // Widget flotante del asistente, montado en Layout (no es una ruta).
-// Ciclo de vida del historial: el estado vive AQUÍ, y Layout solo renderiza
-// dentro de RutaProtegida → la conversación sobrevive a la navegación entre
-// páginas (Layout no se desmonta) pero muere al hacer logout o recargar
-// (Layout sale del árbol). Reset al logout sin efectos ni listeners.
+// Ciclo de vida del historial: el estado se respalda en sessionStorage →
+// sobrevive a la navegación entre páginas y al F5, pero muere al cerrar la
+// pestaña (alcance natural de sessionStorage) o al hacer logout (lo borra
+// AuthContext.logout(), por eso la clave vive allí). La memoria del agente
+// está en el servidor keyed por conversation_id: restaurar el id tras un F5
+// restaura también el contexto del LLM, no solo las burbujas pintadas.
+
+function leerSesionChat() {
+  try {
+    return JSON.parse(sessionStorage.getItem(CLAVE_CHAT_SESION)) ?? {};
+  } catch {
+    return {}; // JSON corrupto → se arranca hilo limpio, no se rompe el render
+  }
+}
 const IconChat = ({ size = 24, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -23,15 +33,21 @@ const IconCerrar = ({ size = 22, color = 'currentColor' }) => (
 export default function ChatWidget() {
   const { token, usuario } = useAuth();
   const [abierto, setAbierto] = useState(false);
-  const [mensajes, setMensajes] = useState([]);
+  // Inicialización lazy desde sessionStorage: recupera el hilo tras un F5
+  const [mensajes, setMensajes] = useState(() => leerSesionChat().mensajes ?? []);
   const [input, setInput] = useState('');
   // El id lo genera el CLIENTE en el primer mensaje; si no se enviara, el
   // backend caería en el hilo "-default" acumulativo que queremos evitar.
   // Prefijo con el id de usuario: el hilo queda atribuible y sin colisiones.
-  const [conversationId, setConversationId] = useState(null);
+  const [conversationId, setConversationId] = useState(() => leerSesionChat().conversationId ?? null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
   const bottomRef = useRef(null);
+
+  // Respaldo del hilo en sessionStorage en cada cambio (ver comentario de cabecera)
+  useEffect(() => {
+    sessionStorage.setItem(CLAVE_CHAT_SESION, JSON.stringify({ mensajes, conversationId }));
+  }, [mensajes, conversationId]);
 
   // Scroll automático al último mensaje (también al reabrir el panel)
   useEffect(() => {
