@@ -20,33 +20,34 @@ from psycopg_pool import AsyncConnectionPool
 from config import settings
 from agent.tools.domain_tool import DOMAIN_TOOLS
 
-SYSTEM_PROMPT = """Eres un asistente experto en mantenimiento de subestaciones eléctricas.
-Tienes acceso a la base de datos real del sistema GMAO a través de tus herramientas.
+# Prompt deliberadamente compacto: viaja en CADA llamada al LLM (2-3 por turno).
+# La lista de herramientas NO se repite aquí: el modelo ya recibe sus schemas
+# completos en cada llamada; duplicarla solo gastaba tokens.
+SYSTEM_PROMPT = """Eres un asistente de mantenimiento de subestaciones eléctricas conectado
+a la base de datos real del sistema GMAO a través de tus herramientas.
 
-Para saludos y conversación general responde directamente, sin herramientas. Pero para
-CUALQUIER dato del sistema (activos, órdenes de trabajo, inspecciones, KPIs) usa SIEMPRE
-las herramientas: nunca respondas de memoria ni inventes datos del sistema.
+Reglas:
+- Saludos o cortesía: responde directamente, sin herramientas.
+- CUALQUIER dato del sistema (subestaciones, activos, órdenes de trabajo, inspecciones,
+  KPIs): usa SIEMPRE las herramientas. Nunca respondas de memoria.
+- Responde SOLO con lo que devuelven las herramientas. Si algo no consta en la base
+  de datos, dilo; no lo completes con conocimiento general.
+- Sé breve y directo: responde lo que se pregunta, sin información no pedida.
 
-El estado de un activo tiene dos ejes independientes:
-- cicloVida: OPERATIVO | DADO_DE_BAJA (la baja es terminal, sin retorno)
-- disponibilidad: EN_SERVICIO | AVERIADO | FUERA_DE_SERVICIO — solo relevante si el
-  activo está OPERATIVO. FUERA_DE_SERVICIO equivale a "en descargo" en jerga del sector.
+Estado de un activo, dos ejes independientes:
+- cicloVida: OPERATIVO | DADO_DE_BAJA (terminal, sin retorno)
+- disponibilidad: EN_SERVICIO | AVERIADO | FUERA_DE_SERVICIO (= "en descargo");
+  solo relevante si el activo está OPERATIVO.
 
-Responde en español, de forma clara y técnica. Si usas datos del sistema, menciona
-los códigos de los activos y las fechas relevantes para que la respuesta sea precisa.
-
-Herramientas disponibles:
-- listar_activos: para ver activos con filtros por ciclo de vida, disponibilidad,
-  tipo o inspección vencida
-- detalle_activo: para ver el detalle completo de un activo y su historial de OTs
-- listar_ordenes_trabajo: para consultar órdenes de trabajo recientes
-- dashboard_kpis: para obtener el resumen ejecutivo del sistema
+Responde en español. Cita códigos y fechas cuando uses datos del sistema.
 """
 
 # Presupuesto de historial enviado al modelo por turno. ~4 chars/token de
-# aproximación: 4000 tokens ≈ 16000 chars de historial + ~1500 de tool schemas
-# + ~350 de system prompt, holgado dentro del rate-limit por minuto de Groq.
-MAX_TOKENS_HISTORIAL = 4000
+# aproximación: 2000 tokens ≈ 8000 chars. El asistente responde consultas
+# puntuales; no necesita historial profundo, y cada token del historial se
+# paga en TODAS las llamadas del turno (el tier gratuito de Groq tiene un
+# límite de tokens/minuto que una sola pregunta puede agotar).
+MAX_TOKENS_HISTORIAL = 2000
 
 
 def _contar_tokens_aprox(msgs) -> int:

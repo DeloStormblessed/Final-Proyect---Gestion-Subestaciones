@@ -102,6 +102,33 @@ def listar_activos(
 
 
 @tool
+def listar_subestaciones(config: RunnableConfig = None) -> str:
+    """
+    Lista las subestaciones del sistema: código, nombre, ubicación, tensión
+    nominal (kV) y si están activas. Usar SIEMPRE esta herramienta para
+    preguntas sobre subestaciones (no deducirlas desde los activos).
+    """
+    jwt = (config or {}).get("configurable", {}).get("jwt_token", "")
+    resultado = _get("/subestaciones", jwt, {"limite": 50})
+    if isinstance(resultado, str):
+        return resultado
+
+    datos = resultado.get("datos", [])
+    if not datos:
+        return "No hay subestaciones registradas en el sistema."
+
+    pag = resultado.get("paginacion", {})
+    lineas = [f"Total: {pag.get('total', len(datos))} subestaciones\n"]
+    for s in datos:
+        estado = "activa" if s.get("activa") else "inactiva"
+        lineas.append(
+            f"- {s.get('codigo', '?')} | {s.get('nombre', '')} | {s.get('ubicacion', '')} | "
+            f"{s.get('tensionNominal', '?')} kV | {estado}"
+        )
+    return "\n".join(lineas)
+
+
+@tool
 def detalle_activo(codigo_o_id: str, config: RunnableConfig = None) -> str:
     """
     Devuelve el detalle completo de un activo: datos técnicos, ciclo de vida,
@@ -129,7 +156,8 @@ def detalle_activo(codigo_o_id: str, config: RunnableConfig = None) -> str:
         f"**{a.get('codigo', '?')}** — {a.get('tipo', '?')}",
         f"Fabricante: {a.get('fabricante', '')} | Modelo: {a.get('modelo', '')}",
         f"Nº serie: {a.get('numeroSerie', '')}",
-        f"Ciclo de vida: {a.get('cicloVida', '?')} | Disponibilidad: {a.get('disponibilidad', '?')}",
+        f"Ciclo de vida: {a.get('cicloVida', '?')} | "
+        f"Disponibilidad: {a.get('disponibilidad', '?')}",
         f"Subestación: {a.get('subestacion', {}).get('codigo', '')}",
         f"En servicio desde: {str(a.get('fechaPuestaEnServicio', ''))[:10]}",
         f"Próxima inspección: {str(a.get('fechaProximaInspeccion', ''))[:10]}",
@@ -150,13 +178,13 @@ def detalle_activo(codigo_o_id: str, config: RunnableConfig = None) -> str:
 @tool
 def listar_ordenes_trabajo(
     tipo: str = "",
-    limite: int = 20,
+    limite: int = 10,
     config: RunnableConfig = None,
 ) -> str:
     """
     Lista las órdenes de trabajo del sistema, las más recientes primero.
     - tipo: INSPECCION | PREVENTIVO | CORRECTIVO | INSTALACION | BAJA
-    - limite: número máximo de resultados (por defecto 20)
+    - limite: número máximo de resultados (por defecto 10, máximo 50)
     """
     jwt = (config or {}).get("configurable", {}).get("jwt_token", "")
     params = {"limite": min(limite, 50)}
@@ -228,4 +256,10 @@ def dashboard_kpis(config: RunnableConfig = None) -> str:
 
 
 # Lista exportable para el grafo
-DOMAIN_TOOLS = [listar_activos, detalle_activo, listar_ordenes_trabajo, dashboard_kpis]
+DOMAIN_TOOLS = [
+    listar_subestaciones,
+    listar_activos,
+    detalle_activo,
+    listar_ordenes_trabajo,
+    dashboard_kpis,
+]
