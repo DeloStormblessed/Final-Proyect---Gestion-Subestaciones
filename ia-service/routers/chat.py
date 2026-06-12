@@ -1,5 +1,6 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
+from langgraph.errors import GraphRecursionError
 from pydantic import BaseModel
 
 from middleware.auth import get_current_user
@@ -39,8 +40,10 @@ async def chat(
                 "thread_id": conversation_id,
                 "jwt_token": current_user.get("__raw_token", ""),
             },
-            # Máximo 3 ciclos razonamiento→tool por turno (6 nodos = 3 pares LLM+tool).
-            "recursion_limit": 6,
+            # Tope de seguridad contra bucles tool→error→reintento, con margen
+            # para 4-5 ciclos LLM+tool legítimos. Con 6 era tan justo que cualquier
+            # reintento de tool agotaba el límite y el endpoint devolvía 500.
+            "recursion_limit": 10,
         }
 
         result = await agent.ainvoke(
@@ -51,6 +54,16 @@ async def chat(
         respuesta = result["messages"][-1].content
         return ChatResponse(respuesta=respuesta, conversation_id=conversation_id)
 
+    except GraphRecursionError:
+        # El agente entró en bucle (p.ej. una tool fallando repetidamente).
+        # Respuesta degradada en vez de 500: el chat de la UI sigue funcionando.
+        return ChatResponse(
+            respuesta=(
+                "No he podido completar la consulta: el sistema necesitó demasiados "
+                "pasos para responder. Prueba a reformular la pregunta o acotarla."
+            ),
+            conversation_id=conversation_id,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error del agente: {str(e)}")
 
