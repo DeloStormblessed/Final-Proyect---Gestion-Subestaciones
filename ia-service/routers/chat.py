@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from langgraph.errors import GraphRecursionError
@@ -6,6 +7,44 @@ from pydantic import BaseModel
 from middleware.auth import get_current_user
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+logger = logging.getLogger("ia-service.chat")
+
+
+def _log_telemetria_turno(mensajes):
+    """
+    Telemetría del turno: cuántas llamadas al LLM hubo, qué tool pidió cada una
+    (con argumentos) y los tokens de entrada/salida que reporta Groq. Una pregunta
+    simple con una tool deberían ser 2 llamadas: si salen más, aquí se ve si fue
+    un argumento erróneo, una tool de más o historial inflado.
+    """
+    # El state devuelve el hilo completo; el turno actual es lo que sigue al
+    # último mensaje humano (el que acaba de enviar el usuario).
+    idx = max((i for i, m in enumerate(mensajes) if m.type == "human"), default=0)
+    n_llamada = 0
+    total_in = total_out = 0
+    for m in mensajes[idx:]:
+        if m.type != "ai":
+            continue
+        n_llamada += 1
+        uso = getattr(m, "usage_metadata", None) or {}
+        total_in += uso.get("input_tokens", 0)
+        total_out += uso.get("output_tokens", 0)
+        tools = [
+            f"{tc['name']}({tc.get('args', {})})"
+            for tc in (getattr(m, "tool_calls", None) or [])
+        ]
+        logger.info(
+            "LLM call %d: in=%s out=%s -> %s",
+            n_llamada,
+            uso.get("input_tokens", "?"),
+            uso.get("output_tokens", "?"),
+            "; ".join(tools) if tools else "respuesta final",
+        )
+    logger.info(
+        "Turno completo: %d llamadas, %d tokens de entrada, %d de salida",
+        n_llamada, total_in, total_out,
+    )
 
 
 class ChatRequest(BaseModel):
@@ -50,6 +89,8 @@ async def chat(
             {"messages": [{"role": "user", "content": body.message}]},
             config=config,
         )
+
+        _log_telemetria_turno(result["messages"])
 
         respuesta = result["messages"][-1].content
         return ChatResponse(respuesta=respuesta, conversation_id=conversation_id)

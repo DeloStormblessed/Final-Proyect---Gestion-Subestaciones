@@ -1,9 +1,14 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from agent.graph import init_checkpointer, build_agent
+
+# INFO para ver la telemetría de tokens por turno (routers/chat.py); el root
+# logger por defecto está en WARNING y se la tragaría.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
 
 
 @asynccontextmanager

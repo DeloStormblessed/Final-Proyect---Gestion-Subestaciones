@@ -3,8 +3,14 @@ Tools de dominio: consultan la API de Node reenviando el JWT del usuario.
 El JWT viaja en RunnableConfig (configurable["jwt_token"]) para no exponerlo
 en los argumentos del tool, que el LLM podría manipular.
 
-V2: el estado del activo tiene dos ejes (cicloVida + disponibilidad) en lugar
-del campo único `estado` de V1. Las tools leen y filtran por ambos ejes.
+Diseño orientado a ahorrar tokens (los docstrings son los schemas que el LLM
+recibe en CADA llamada, igual que el system prompt):
+- El mapeo lenguaje→filtros derivado del schema Prisma vive AQUÍ, pegado al
+  argumento que afecta, no duplicado en el prompt.
+- Resoluciones código→id se hacen con llamadas HTTP internas: una petición
+  HTTP extra es gratis comparada con un ciclo extra de LLM (~1.5k tokens).
+- solo_contar evita listar filas cuando la pregunta es "¿cuántos?".
+- Salida tabular con cabecera única, sin repetir etiquetas en cada fila.
 """
 
 import httpx
@@ -42,63 +48,28 @@ def _estado_legible(a: dict) -> str:
 
 
 def _desenlace_ot(ot: dict) -> str:
-    """Formatea el resultado de una OT: inspección o intervención, según el tipo."""
-    if ot.get("resultado"):
-        return f" (inspección: {ot['resultado']})"
-    if ot.get("resultadoIntervencion"):
-        return f" (desenlace: {ot['resultadoIntervencion']})"
-    return ""
+    """Desenlace de una OT: resultado de inspección o de intervención, o '-'."""
+    return ot.get("resultado") or ot.get("resultadoIntervencion") or "-"
 
 
-@tool
-def listar_activos(
-    ciclo_vida: str = "",
-    disponibilidad: str = "",
-    tipo: str = "",
-    inspeccion_vencida: bool = False,
-    limite: int = 10,
-    config: RunnableConfig = None,
-) -> str:
-    """
-    Lista los activos del sistema con filtros opcionales.
-    - ciclo_vida: OPERATIVO | DADO_DE_BAJA
-    - disponibilidad: EN_SERVICIO | AVERIADO | FUERA_DE_SERVICIO
-      (solo tiene sentido para activos OPERATIVOS)
-    - tipo: TRANSFORMADOR_POTENCIA | INTERRUPTOR_AUTOMATICO | SECCIONADOR |
-            PARARRAYOS | TRANSFORMADOR_MEDIDA | BATERIA_CONDENSADORES
-    - inspeccion_vencida: true para ver solo activos con inspección vencida
-    - limite: cuántos activos devolver (por defecto 10, máximo 50); aumentar
-              solo si la pregunta requiere un análisis exhaustivo de todos los activos
-    """
-    jwt = (config or {}).get("configurable", {}).get("jwt_token", "")
-    params = {"limite": min(limite, 50)}
-    if ciclo_vida:
-        params["cicloVida"] = ciclo_vida
-    if disponibilidad:
-        params["disponibilidad"] = disponibilidad
-    if tipo:
-        params["tipo"] = tipo
-    if inspeccion_vencida:
-        params["inspeccionVencida"] = "true"
+def _resolver_subestacion_id(codigo: str, jwt: str) -> str | None:
+    """Código de subestación → id interno (el API filtra por subestacionId)."""
+    res = _get("/subestaciones", jwt, {"limite": 50})
+    if isinstance(res, str):
+        return None
+    for s in res.get("datos", []):
+        if s.get("codigo", "").upper() == codigo.upper():
+            return s.get("id")
+    return None
 
-    resultado = _get("/activos", jwt, params)
-    if isinstance(resultado, str):
-        return resultado
 
-    datos = resultado.get("datos", [])
-    if not datos:
-        return "No se encontraron activos con esos filtros."
-
-    pag = resultado.get("paginacion", {})
-    lineas = [f"Total: {pag.get('total', len(datos))} activos\n"]
-    for a in datos:
-        insp = str(a.get("fechaProximaInspeccion", ""))[:10]
-        sub = a.get("subestacion", {}).get("codigo", "")
-        lineas.append(
-            f"- {a.get('codigo', '?')} | {a.get('tipo', '?')} | Estado: {_estado_legible(a)} | "
-            f"Próxima inspección: {insp} | Subestación: {sub}"
-        )
-    return "\n".join(lineas)
+def _resolver_activo_id(codigo_o_id: str, jwt: str) -> str | None:
+    """Código de activo → id interno (busqueda textual del API sobre codigo)."""
+    res = _get("/activos", jwt, {"busqueda": codigo_o_id, "limite": 1})
+    if isinstance(res, str):
+        return None
+    datos = res.get("datos", [])
+    return datos[0].get("id") if datos else None
 
 
 @tool
@@ -118,12 +89,81 @@ def listar_subestaciones(config: RunnableConfig = None) -> str:
         return "No hay subestaciones registradas en el sistema."
 
     pag = resultado.get("paginacion", {})
-    lineas = [f"Total: {pag.get('total', len(datos))} subestaciones\n"]
+    lineas = [
+        f"Total: {pag.get('total', len(datos))} subestaciones.",
+        "codigo | nombre | ubicacion | tension | estado",
+    ]
     for s in datos:
         estado = "activa" if s.get("activa") else "inactiva"
         lineas.append(
-            f"- {s.get('codigo', '?')} | {s.get('nombre', '')} | {s.get('ubicacion', '')} | "
+            f"{s.get('codigo', '?')} | {s.get('nombre', '')} | {s.get('ubicacion', '')} | "
             f"{s.get('tensionNominal', '?')} kV | {estado}"
+        )
+    return "\n".join(lineas)
+
+
+@tool
+def listar_activos(
+    ciclo_vida: str = "",
+    disponibilidad: str = "",
+    tipo: str = "",
+    subestacion: str = "",
+    inspeccion_vencida: bool = False,
+    solo_contar: bool = False,
+    limite: int = 10,
+    config: RunnableConfig = None,
+) -> str:
+    """
+    Lista o cuenta los activos del sistema. Filtros (todos opcionales):
+    - ciclo_vida: OPERATIVO | DADO_DE_BAJA. "Dados de baja" es ciclo_vida,
+      NO una disponibilidad.
+    - disponibilidad: EN_SERVICIO | AVERIADO | FUERA_DE_SERVICIO. "Averiado" →
+      AVERIADO; "en descargo" o "fuera de servicio" → FUERA_DE_SERVICIO.
+    - tipo: TRANSFORMADOR_POTENCIA | INTERRUPTOR_AUTOMATICO | SECCIONADOR |
+      PARARRAYOS | TRANSFORMADOR_MEDIDA | BATERIA_CONDENSADORES
+    - subestacion: código de subestación (ej: SE-NORTE-220) para ver solo sus activos.
+    - inspeccion_vencida: true → solo activos con la inspección vencida/atrasada.
+    - solo_contar: true → devuelve SOLO el total, sin filas (para "¿cuántos…?").
+    - limite: filas a devolver (defecto 10, máximo 50).
+    """
+    jwt = (config or {}).get("configurable", {}).get("jwt_token", "")
+    params = {"limite": 1 if solo_contar else min(limite, 50)}
+    if ciclo_vida:
+        params["cicloVida"] = ciclo_vida
+    if disponibilidad:
+        params["disponibilidad"] = disponibilidad
+    if tipo:
+        params["tipo"] = tipo
+    if inspeccion_vencida:
+        params["inspeccionVencida"] = "true"
+    if subestacion:
+        sub_id = _resolver_subestacion_id(subestacion, jwt)
+        if not sub_id:
+            return f"No existe ninguna subestación con código '{subestacion}'."
+        params["subestacionId"] = sub_id
+
+    resultado = _get("/activos", jwt, params)
+    if isinstance(resultado, str):
+        return resultado
+
+    datos = resultado.get("datos", [])
+    total = resultado.get("paginacion", {}).get("total", len(datos))
+
+    if solo_contar:
+        return f"Total: {total} activos con esos filtros."
+    if not datos:
+        return "No se encontraron activos con esos filtros."
+
+    lineas = [
+        f"Total: {total} activos.",
+        "codigo | tipo | estado | proxima_inspeccion | subestacion",
+    ]
+    for a in datos:
+        insp = str(a.get("fechaProximaInspeccion", ""))[:10]
+        sub = a.get("subestacion", {}).get("codigo", "")
+        lineas.append(
+            f"{a.get('codigo', '?')} | {a.get('tipo', '?')} | {_estado_legible(a)} | "
+            f"{insp} | {sub}"
         )
     return "\n".join(lineas)
 
@@ -131,45 +171,38 @@ def listar_subestaciones(config: RunnableConfig = None) -> str:
 @tool
 def detalle_activo(codigo_o_id: str, config: RunnableConfig = None) -> str:
     """
-    Devuelve el detalle completo de un activo: datos técnicos, ciclo de vida,
-    disponibilidad, subestación y las últimas órdenes de trabajo.
-    Acepta el código del activo (ej: SE-NORTE-T1) o su ID.
+    Detalle completo de UN activo: datos técnicos, ciclo de vida, disponibilidad,
+    subestación y sus últimas órdenes de trabajo.
+    Acepta el código del activo (ej: T-NORTE-01) o su ID.
     """
     jwt = (config or {}).get("configurable", {}).get("jwt_token", "")
 
-    # Primero buscamos por código en el listado, luego pedimos el detalle por ID
-    busqueda = _get("/activos", jwt, {"busqueda": codigo_o_id, "limite": 5})
-    if isinstance(busqueda, str):
-        return busqueda
-
-    datos = busqueda.get("datos", [])
-    if not datos:
+    activo_id = _resolver_activo_id(codigo_o_id, jwt)
+    if not activo_id:
         return f"No se encontró ningún activo con código o ID '{codigo_o_id}'."
 
-    activo_id = datos[0].get("id", "")
     detalle = _get(f"/activos/{activo_id}", jwt)
     if isinstance(detalle, str):
         return detalle
 
     a = detalle
     resultado = [
-        f"**{a.get('codigo', '?')}** — {a.get('tipo', '?')}",
-        f"Fabricante: {a.get('fabricante', '')} | Modelo: {a.get('modelo', '')}",
+        f"{a.get('codigo', '?')} — {a.get('tipo', '?')}",
+        f"Fabricante: {a.get('fabricante', '')} | Modelo: {a.get('modelo', '')} | "
         f"Nº serie: {a.get('numeroSerie', '')}",
         f"Ciclo de vida: {a.get('cicloVida', '?')} | "
         f"Disponibilidad: {a.get('disponibilidad', '?')}",
         f"Subestación: {a.get('subestacion', {}).get('codigo', '')}",
-        f"En servicio desde: {str(a.get('fechaPuestaEnServicio', ''))[:10]}",
+        f"En servicio desde: {str(a.get('fechaPuestaEnServicio', ''))[:10]} | "
         f"Próxima inspección: {str(a.get('fechaProximaInspeccion', ''))[:10]}",
         "",
-        "Últimas órdenes de trabajo:",
+        "Últimas OTs: fecha | tipo | desenlace | descripcion",
     ]
     for ot in a.get("ordenesTrabajo", [])[:5]:
         fecha = str(ot.get("fechaIntervencion", ""))[:10]
         resultado.append(
-            f"  • [{fecha}] {ot.get('tipo', '?')}"
-            + _desenlace_ot(ot)
-            + f" — {ot.get('descripcion', '')[:80]}"
+            f"{fecha} | {ot.get('tipo', '?')} | {_desenlace_ot(ot)} | "
+            f"{ot.get('descripcion', '')[:80]}"
         )
 
     return "\n".join(resultado)
@@ -178,36 +211,59 @@ def detalle_activo(codigo_o_id: str, config: RunnableConfig = None) -> str:
 @tool
 def listar_ordenes_trabajo(
     tipo: str = "",
+    activo: str = "",
+    fecha_desde: str = "",
+    fecha_hasta: str = "",
+    solo_contar: bool = False,
     limite: int = 10,
     config: RunnableConfig = None,
 ) -> str:
     """
-    Lista las órdenes de trabajo del sistema, las más recientes primero.
-    - tipo: INSPECCION | PREVENTIVO | CORRECTIVO | INSTALACION | BAJA
-    - limite: número máximo de resultados (por defecto 10, máximo 50)
+    Lista o cuenta órdenes de trabajo (OTs), las más recientes primero.
+    Filtros (todos opcionales):
+    - tipo: INSPECCION | PREVENTIVO | CORRECTIVO | INSTALACION | BAJA.
+      "Revisión/mantenimiento programado" → PREVENTIVO; "reparación/avería" → CORRECTIVO.
+    - activo: código del activo (ej: T-NORTE-01) para ver solo sus OTs.
+    - fecha_desde / fecha_hasta: rango de fecha de intervención, formato YYYY-MM-DD.
+    - solo_contar: true → devuelve SOLO el total, sin filas (para "¿cuántas…?").
+    - limite: filas a devolver (defecto 10, máximo 50).
     """
     jwt = (config or {}).get("configurable", {}).get("jwt_token", "")
-    params = {"limite": min(limite, 50)}
+    params = {"limite": 1 if solo_contar else min(limite, 50)}
     if tipo:
         params["tipo"] = tipo
+    if fecha_desde:
+        params["fechaDesde"] = fecha_desde
+    if fecha_hasta:
+        params["fechaHasta"] = fecha_hasta
+    if activo:
+        activo_id = _resolver_activo_id(activo, jwt)
+        if not activo_id:
+            return f"No se encontró ningún activo con código '{activo}'."
+        params["activoId"] = activo_id
 
     resultado = _get("/ordenes-trabajo", jwt, params)
     if isinstance(resultado, str):
         return resultado
 
     datos = resultado.get("datos", [])
+    total = resultado.get("paginacion", {}).get("total", len(datos))
+
+    if solo_contar:
+        return f"Total: {total} órdenes de trabajo con esos filtros."
     if not datos:
         return "No se encontraron órdenes de trabajo con esos filtros."
 
-    pag = resultado.get("paginacion", {})
-    lineas = [f"Total: {pag.get('total', len(datos))} órdenes de trabajo\n"]
+    lineas = [
+        f"Total: {total} órdenes de trabajo.",
+        "fecha | tipo | desenlace | activo | descripcion",
+    ]
     for ot in datos:
         fecha = str(ot.get("fechaIntervencion", ""))[:10]
         codigo_activo = ot.get("activo", {}).get("codigo", "?")
         lineas.append(
-            f"- [{fecha}] {ot.get('tipo', '?')}"
-            + _desenlace_ot(ot)
-            + f" | Activo: {codigo_activo} | {ot.get('descripcion', '')[:60]}"
+            f"{fecha} | {ot.get('tipo', '?')} | {_desenlace_ot(ot)} | "
+            f"{codigo_activo} | {ot.get('descripcion', '')[:60]}"
         )
     return "\n".join(lineas)
 
@@ -215,9 +271,10 @@ def listar_ordenes_trabajo(
 @tool
 def dashboard_kpis(config: RunnableConfig = None) -> str:
     """
-    Devuelve el resumen ejecutivo del sistema: conteo de activos por estado,
-    activos con inspección vencida, órdenes de trabajo de los últimos 30 días
-    y los activos con inspección más atrasada.
+    Resumen ejecutivo del sistema en una sola llamada: activos por estado,
+    cuántos tienen la inspección vencida, OTs de los últimos 30 días por tipo
+    y los activos con la inspección más atrasada. Preferir esta herramienta
+    para preguntas globales o de resumen.
     """
     jwt = (config or {}).get("configurable", {}).get("jwt_token", "")
     resultado = _get("/dashboard", jwt)
@@ -225,7 +282,7 @@ def dashboard_kpis(config: RunnableConfig = None) -> str:
         return resultado
 
     d = resultado
-    lineas = ["**Dashboard — Estado general del sistema**", ""]
+    lineas = ["Dashboard — estado general", ""]
 
     estados = d.get("activosPorEstado", {})
     lineas.append("Activos por estado:")
@@ -236,20 +293,18 @@ def dashboard_kpis(config: RunnableConfig = None) -> str:
 
     ots = d.get("otsUltimos30DiasPorTipo", {})
     if ots:
-        lineas.append("\nÓrdenes de trabajo (últimos 30 días):")
+        lineas.append("\nOTs últimos 30 días:")
         for tipo, count in ots.items():
             lineas.append(f"  {tipo}: {count}")
 
     top = d.get("topInspeccionesAtrasadas", [])
     if top:
-        lineas.append("\nActivos con inspección más atrasada:")
+        lineas.append("\nInspecciones más atrasadas: codigo | tipo | subestacion | vencia | dias_retraso")
         for a in top[:5]:
             insp = str(a.get("fechaProximaInspeccion", ""))[:10]
-            retraso = a.get("diasDeRetraso", "?")
-            sub = a.get("subestacion", {}).get("codigo", "")
             lineas.append(
-                f"  • {a.get('codigo', '?')} ({a.get('tipo', '?')}, {sub}) — "
-                f"vencía: {insp}, lleva {retraso} días de retraso"
+                f"  {a.get('codigo', '?')} | {a.get('tipo', '?')} | "
+                f"{a.get('subestacion', {}).get('codigo', '')} | {insp} | {a.get('diasDeRetraso', '?')}"
             )
 
     return "\n".join(lineas)
