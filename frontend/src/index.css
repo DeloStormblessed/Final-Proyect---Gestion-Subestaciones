@@ -99,9 +99,60 @@ input, select, textarea {
   to { transform: rotate(360deg); }
 }
 
-/* Columnas secundarias de tabla: se ocultan en móvil para que Tipo, Activo y Resultado quepan */
-@media (max-width: 640px) {
+/* Columnas secundarias de tabla: se ocultan en tablet (≤1024px) para que las
+   tablas quepan sin scroll horizontal. <768px no tiene soporte (no es app móvil),
+   así que un solo breakpoint cubre todo el rango no-desktop. */
+@media (max-width: 1024px) {
   .col-secundaria { display: none; }
+}
+
+/* ── Layout responsive (tablet 768–1024px, horizontal) ──
+   Las propiedades viven AQUÍ y no inline porque el inline pisa a la clase:
+   lo que la media query debe poder cambiar tiene que salir del JSX. */
+
+/* Grid principal del dashboard: gráfico (2fr) + columna derecha (1fr) */
+.dash-principal {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+/* Wrapper del gráfico de líneas: en desktop su altura viene del stretch
+   contra la columna derecha del grid */
+.dash-grafico-lineas {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Min-widths de tablas anchas: en desktop fuerzan scroll horizontal antes de
+   aplastar columnas; en tablet sobran porque .col-secundaria ya no se pinta */
+.tabla-ots          { min-width: 750px; }
+.tabla-historial-ot { min-width: 700px; }
+
+.contenido-principal { padding: 1.75rem 2rem; }
+
+/* Dos cards lado a lado (ejes de la máquina de estados en Configuración) */
+.grid-dos-columnas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 1024px) {
+  /* El dashboard se apila: gráfico a ancho completo, luego donuts, luego top */
+  .dash-principal { grid-template-columns: 1fr; }
+
+  /* Al apilarse, el gráfico pierde su pareja de stretch y colapsaría a 0:
+     altura explícita solo en tablet */
+  .dash-grafico-lineas { min-height: 280px; }
+
+  .tabla-ots,
+  .tabla-historial-ot { min-width: 0; }
+
+  .contenido-principal { padding: 1.25rem; }
+
+  .grid-dos-columnas { grid-template-columns: 1fr; }
 }
 
 /* Inputs y selects de la barra de filtros */

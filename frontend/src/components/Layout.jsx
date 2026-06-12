@@ -123,7 +123,8 @@ export default function Layout() {
       {/* ── Contenido principal ── */}
       <div style={{ flex: 1, marginLeft: 72, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
         <Topbar />
-        <main style={{ flex: 1, padding: '1.75rem 2rem', overflow: 'auto', scrollbarGutter: 'stable' }}>
+        {/* El padding vive en .contenido-principal: se reduce en tablet vía media query */}
+        <main className="contenido-principal" style={{ flex: 1, overflow: 'auto', scrollbarGutter: 'stable' }}>
           <Outlet />
         </main>
       </div>

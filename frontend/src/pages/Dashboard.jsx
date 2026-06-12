@@ -225,8 +225,9 @@ export default function Dashboard() {
         <KpiCard titulo="OTs (30 días)"    valor={totalOTs30dias}               color={C.violeta} valorArriba />
       </div>
 
-      {/* ── Gráfico de líneas + columna derecha ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem', alignItems: 'stretch' }}>
+      {/* ── Gráfico de líneas + columna derecha ──
+          El grid (2fr 1fr → 1 columna en tablet) vive en .dash-principal */}
+      <div className="dash-principal">
 
         {/* Gráfico de líneas: atraso de mantenimiento (acumulado semanal) */}
         {(() => {
@@ -235,7 +236,8 @@ export default function Dashboard() {
           return (
             <div style={{ ...s.card, display: 'flex', flexDirection: 'column' }}>
               {/* Título + leyenda con valores integrados en una sola línea */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+              {/* flexWrap: en tablet la leyenda de 6 valores salta de línea en vez de desbordar */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', rowGap: '0.35rem', marginBottom: '0.75rem' }}>
                 <p style={{ ...s.cardTitle, marginBottom: 0 }}>Atraso de mantenimiento</p>
                 {punto && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', fontSize: '0.82rem' }}>
@@ -254,7 +256,7 @@ export default function Dashboard() {
                   Sin historial de órdenes de trabajo
                 </div>
               ) : (
-                <div style={{ flex: 1, minHeight: 0 }}>
+                <div className="dash-grafico-lineas">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
                       data={serieOTs}

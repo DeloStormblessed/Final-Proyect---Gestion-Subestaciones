@@ -10,7 +10,7 @@ export default function MaquinaEstados() {
 
       {/* ── Sección A: Los dos ejes ── */}
       <Tarjeta titulo="Los dos ejes del estado">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div className="grid-dos-columnas">
           <EjeCard
             nombre="ciclo de Vida"
             nota="El ciclo de vida solo avanza en un sentido. Cuando un activo se da de baja, queda retirado de forma definitiva: no se reactiva ni admite nuevas intervenciones."
@@ -69,7 +69,7 @@ export default function MaquinaEstados() {
 
       {/* ── Sección C: Modificadores declarados ── */}
       <Tarjeta titulo="El resultado que se anota en la orden">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div className="grid-dos-columnas">
 
           <div style={estiloModificador}>
             <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.75rem' }}>

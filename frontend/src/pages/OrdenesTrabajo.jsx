@@ -203,7 +203,9 @@ export default function OrdenesTrabajo() {
           <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
             {/* Las OTs son inmutables por diseño (regla #6): nacen cerradas y no se editan ni borran.
                 Por eso la tabla no tiene columna de acciones de edición. */}
-            <table style={estilos.tabla}>
+            {/* min-width en .tabla-ots (CSS): en tablet se anula porque las
+                columnas .col-secundaria ya no se pintan y la tabla cabe */}
+            <table className="tabla-ots" style={estilos.tabla}>
               <thead>
                 <tr>
                   <th style={estilos.th}>Fecha</th>
@@ -330,7 +332,7 @@ export default function OrdenesTrabajo() {
 }
 
 const estilos = {
-  tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', tableLayout: 'fixed', minWidth: 750 },
+  tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', tableLayout: 'fixed' },
   th: {
     textAlign: 'left', padding: '0.5rem 0.75rem',
     fontWeight: 700, color: '#1A1A1A', fontSize: '0.72rem',
