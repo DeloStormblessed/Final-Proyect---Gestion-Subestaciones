@@ -65,6 +65,20 @@ Dos servicios de backend independientes que no se fusionan:
 
 ---
 
+## Tecnologías
+
+| Capa | Stack |
+| --- | --- |
+| **Frontend** | React 18 · Vite 5 · React Router 6 · Recharts (gráficos) · lucide-react (iconos) · estilos inline + variables CSS |
+| **Backend (GMAO)** | Node + Express 4 · Prisma 5 (ORM) · Zod (validación) · JWT (`jsonwebtoken`) · bcryptjs · seguridad: Helmet, CORS, Morgan, express-rate-limit |
+| **ia-service** | Python 3.12 + FastAPI · Pydantic v2 · LangChain + **LangGraph** (agente ReAct) · **Groq** (`llama-3.3-70b-versatile`) · ChromaDB + fastembed (RAG) · python-jose (validación JWT) · httpx |
+| **Base de datos** | PostgreSQL 16 (dominio en Node vía Prisma; checkpointer del agente vía `langgraph-checkpoint-postgres`) |
+| **Automatización** | n8n (webhook + Switch) · Telegram (notificaciones) |
+| **Testing** | Vitest + Supertest (170 tests de backend) · newman (colección Postman) |
+| **Despliegue** | Vercel (frontend) · Railway (backend, ia-service, Postgres) · n8n Cloud · Docker / docker-compose (Postgres en local) |
+
+---
+
 ## Lógica de negocio — la máquina de estados (V2, dos ejes)
 
 El corazón del dominio es una **función pura** (`backend/lib/transiciones.js`, sin BD ni
@@ -252,24 +266,6 @@ Instrucciones de puesta en marcha en [`n8n-workflows/README.md`](n8n-workflows/R
 
 ---
 
-## Documentación de la API
-
-- **Swagger (ia-service)**: generado por FastAPI en `{IA_URL}/docs`.
-- **Postman**: colección completa (Node + endpoints de chat del ia-service) en
-  `backend/postman/gestion-subestaciones.postman_collection.json`.
-- **Uso de IA**: metodología y arquitectura IA del proyecto en [`USO-IA.md`](USO-IA.md).
-
-## Tests
-
-El backend Node tiene **170 tests** (Vitest + Supertest): máquina de estados pura,
-servicios, integración de endpoints y reglas de dominio.
-
-```bash
-cd backend && npm test
-```
-
----
-
 ## Alcance y limitaciones (decisiones conscientes)
 
 La frontera del proyecto (ver [De qué trata](#de-qué-trata)) la marca una sola frase:
@@ -321,17 +317,48 @@ Mejoras menores e independientes de ese bloque:
 
 ---
 
-## Cuentas de acceso (seed)
+## Instalación y arranque local
 
-| Email | Contraseña | Rol | Permisos |
-| --- | --- | --- | --- |
-| `admin@gmao.com` | admin123 | ADMIN | Acceso total: activos, OTs (todos los tipos), subestaciones, usuarios |
-| `tecnico@gmao.com` | tecnico123 | TECNICO | Activos y OTs (todos los tipos), sin gestión de usuarios ni subestaciones |
-| `tecnico2@gmao.com` | tecnico123 | TECNICO | Igual que tecnico |
-| `operario@gmao.com` | operario123 | OPERARIO | Solo lectura + registrar inspecciones (`INSPECCION`) |
-| `operario2@gmao.com` | operario123 | OPERARIO | Igual que operario |
+**Requisitos**: Node 18+, Python 3.12, Docker (para Postgres) y una `GROQ_API_KEY`
+(gratuita en [console.groq.com](https://console.groq.com)).
 
----
+**1 · Base de datos** — levanta Postgres con Docker:
+
+```bash
+docker compose up -d        # Postgres en localhost:5432
+```
+
+**2 · Backend (Node)** — instala, configura el `.env` (ver abajo), migra el esquema y
+siembra los datos:
+
+```bash
+cd backend
+npm install
+npm run db:migrate          # crea las tablas (Prisma)
+npm run db:seed             # carga subestaciones, activos, usuarios de prueba
+npm run dev                 # API en http://localhost:3000
+```
+
+**3 · Servicio IA (FastAPI)** — entorno virtual, dependencias, indexación del RAG y
+arranque:
+
+```bash
+cd ia-service
+python -m venv .venv && .venv\Scripts\activate     # Windows (en Unix: source .venv/bin/activate)
+pip install -r requirements.txt
+python scripts/indexar_normativa.py                # indexa los 7 documentos en ChromaDB
+uvicorn main:app --reload                          # agente en http://localhost:8000
+```
+
+**4 · Frontend (React)**:
+
+```bash
+cd frontend
+npm install
+npm run dev                 # app en http://localhost:5173
+```
+
+Cada servicio necesita su `.env` (plantillas `.env.example` en cada carpeta). Las claves:
 
 ## Variables de entorno
 
@@ -362,3 +389,73 @@ ALLOWED_ORIGIN=...              # URL del frontend en prod; vacía = cualquier o
 VITE_NODE_API_URL=http://localhost:3000
 VITE_IA_API_URL=http://localhost:8000
 ```
+
+---
+
+## Cuentas de acceso (seed)
+
+Tras `npm run db:seed`, estas cuentas quedan disponibles para entrar:
+
+| Email | Contraseña | Rol | Permisos |
+| --- | --- | --- | --- |
+| `admin@gmao.com` | admin123 | ADMIN | Acceso total: activos, OTs (todos los tipos), subestaciones, usuarios |
+| `tecnico@gmao.com` | tecnico123 | TECNICO | Activos y OTs (todos los tipos), sin gestión de usuarios ni subestaciones |
+| `tecnico2@gmao.com` | tecnico123 | TECNICO | Igual que tecnico |
+| `operario@gmao.com` | operario123 | OPERARIO | Solo lectura + registrar inspecciones (`INSPECCION`) |
+| `operario2@gmao.com` | operario123 | OPERARIO | Igual que operario |
+
+---
+
+## Tests, Postman y Swagger
+
+**Tests (Vitest + Supertest)** — el backend Node tiene **170 tests**: la máquina de
+estados pura (`lib/transiciones.js`, cada celda de la tabla de transiciones cubierta),
+los servicios de dominio, la integración de los endpoints y las reglas de negocio (A/B,
+inmutabilidad de OT, permisos por rol).
+
+```bash
+cd backend
+npm test            # los 170 tests, una pasada
+npm run test:watch  # modo watch durante el desarrollo
+```
+
+**Swagger (ia-service)** — FastAPI genera la documentación interactiva automáticamente.
+Con el servicio levantado, está en `{IA_URL}/docs` (local: `http://localhost:8000/docs`):
+los endpoints de chat, sus schemas Pydantic (`ChatRequest` / `ChatResponse`) y el
+`/health`, todo probable desde el navegador.
+
+**Postman** — colección completa en
+[`backend/postman/gestion-subestaciones.postman_collection.json`](backend/postman/gestion-subestaciones.postman_collection.json):
+las 8 carpetas de la API de Node (auth, subestaciones, activos, OTs, etiquetas, usuarios,
+dashboard) más la carpeta **IA Service — Chat** con los dos endpoints del agente
+(`POST /api/chat`, `GET /api/chat/history/{id}`). Reutiliza el JWT del login en una
+variable `{{token}}`. Se puede ejecutar desde la app de Postman o por línea de comandos:
+
+```bash
+cd backend && npm run test:api   # corre la colección con newman
+```
+
+La metodología y la arquitectura de la parte IA están documentadas aparte en
+[`USO-IA.md`](USO-IA.md).
+
+---
+
+## Tiempos de desarrollo
+
+Esfuerzo estimado por bloque (~**49 horas** en total):
+
+| Fase | Bloque | Horas |
+| --- | --- | --: |
+| **1** | Backend GMAO (dominio, auth, OTs, máquina de estados, 170 tests) | 25 |
+| **2** | ia-service (FastAPI, agente LangGraph, 6 tools, RAG) | 4 |
+| **2** | Frontend (React, 6 vistas, widget IA, responsive tablet) | 15 |
+| **2** | Automatización n8n (workflow + Telegram) | 2 |
+| **2** | Despliegue (Railway ×2, Vercel, Postgres en la nube) | 2 |
+| **—** | Documentación (README, USO-IA, Postman) | 1 |
+| | **Total** | **49** |
+
+El backend (Fase 1) concentra la mitad del esfuerzo: es la fuente de verdad del dominio y
+carga con la lógica de negocio y los 170 tests. La parte IA (Fase 2) es comparativamente
+ligera en horas porque se apoya en esa base ya sólida —el agente solo *consume* el dominio
+vía API—, mientras que el frontend, al construirse desde cero con seis vistas y el widget,
+es el segundo bloque más costoso.
