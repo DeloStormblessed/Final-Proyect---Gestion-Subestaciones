@@ -1,6 +1,6 @@
 # GMAO Subestaciones — Asistente de Mantenimiento
 
-**🔗 Aplicación desplegada: [final-proyect-gestion-subestaciones.vercel.app](https://final-proyect-gestion-subestaciones.vercel.app/)**
+**🔗 Aplicación desplegada: [final-proyect-gestion-subestaciones.vercel.app](https://gmao-subestaciones.vercel.app)**
 
 Aplicación fullstack para la gestión de activos de subestaciones eléctricas con un agente de IA integrado como parte central del producto. Construida como proyecto final del bootcamp sobre el Mini-GMAO de la fase 1.
 
@@ -442,20 +442,26 @@ La metodología y la arquitectura de la parte IA están documentadas aparte en
 
 ## Tiempos de desarrollo
 
-Esfuerzo estimado por bloque (~**49 horas** en total):
+El proyecto se desarrolló en dos fases. La **fase 1** (semana previa) construyó el backend
+GMAO base —la fuente de verdad del dominio— y se corrigió de forma independiente. La
+**fase 2** (esta semana) es el proyecto final: la refactorización del núcleo a un modelo de
+estado de dos ejes, el servicio de IA, el frontend, la automatización y el despliegue.
 
 | Fase | Bloque | Horas |
 | --- | --- | --: |
-| **1** | Backend GMAO (dominio, auth, OTs, máquina de estados, 170 tests) | 25 |
+| **1** (Proyecto previo) | Backend GMAO base: dominio, auth, OTs, máquina de estados V1, 170 tests | 20 |
+| **2** | Refactorización del núcleo a V2 (dos ejes): schema, transiciones, service, seed, tests y propagación al frontend | 5 |
 | **2** | ia-service (FastAPI, agente LangGraph, 6 tools, RAG) | 4 |
 | **2** | Frontend (React, 6 vistas, widget IA, responsive tablet) | 15 |
 | **2** | Automatización n8n (workflow + Telegram) | 2 |
 | **2** | Despliegue (Railway ×2, Vercel, Postgres en la nube) | 2 |
-| **—** | Documentación (README, USO-IA, Postman) | 1 |
-| | **Total** | **49** |
+| **2** | Documentación (README, USO-IA, Postman) | 1 |
+| | **Total fase 2** | **29** |
 
-El backend (Fase 1) concentra la mitad del esfuerzo: es la fuente de verdad del dominio y
-carga con la lógica de negocio y los 170 tests. La parte IA (Fase 2) es comparativamente
-ligera en horas porque se apoya en esa base ya sólida —el agente solo *consume* el dominio
-vía API—, mientras que el frontend, al construirse desde cero con seis vistas y el widget,
-es el segundo bloque más costoso.
+El grueso del dominio —la fuente de verdad, la lógica de negocio y los 170 tests— se
+construyó en la fase previa (20h). Esta segunda fase parte de esa base sólida: la
+refactorización a un modelo de estado de dos ejes (5h) tocó el núcleo de punta a punta
+—schema, máquina de estados, servicios, seed, tests y su propagación al frontend—,
+mientras que el agente IA es comparativamente ligero porque solo consume el dominio vía la
+API de Node. El frontend, construido desde cero con seis vistas y el widget de chat, es el
+bloque más costoso de la fase 2.
